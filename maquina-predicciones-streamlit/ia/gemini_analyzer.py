@@ -20,7 +20,7 @@ from typing import Any
 import google.generativeai as genai
 import streamlit as st
 
-MODELO = "gemini-1.5-flash"
+MODELO = "gemini-3.6-flash"
 
 GENERATION_CONFIG = {
     "temperature": 0.4,           # algo creativo pero coherente
