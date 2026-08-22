@@ -1,0 +1,38 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: tipster
+      POSTGRES_PASSWORD: tipster
+      POSTGRES_DB: tipster
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  api:
+    build: .
+    environment:
+      DATABASE_URL: postgresql+psycopg2://tipster:tipster@db:5432/tipster
+    env_file:
+      - .env
+    depends_on:
+      - db
+    ports:
+      - "8000:8000"
+    command: ["uvicorn", "backend.app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+  retrainer:
+    build: .
+    environment:
+      DATABASE_URL: postgresql+psycopg2://tipster:tipster@db:5432/tipster
+    env_file:
+      - .env
+    depends_on:
+      - db
+    command: ["python", "-m", "backend.app.ml.retrain_scheduler"]
+
+volumes:
+  pgdata:

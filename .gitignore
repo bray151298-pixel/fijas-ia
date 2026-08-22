@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.venv/
+.env
+*.db
+*.sqlite3
+backend/app/ml/artifacts/*.joblib
+.pytest_cache/
+.DS_Store
+.ipynb_checkpoints/
+data/cache/
+.obsidian/
+

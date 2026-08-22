@@ -1,0 +1,1114 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Tipster IA — Dashboard</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, system-ui, sans-serif; background: #0f172a; color: #e2e8f0; padding: 24px; max-width: 1400px; margin: 0 auto; }
+  h1 { font-size: 24px; margin-bottom: 4px; }
+  h2 { font-size: 18px; margin: 24px 0 12px; color: #94a3b8; }
+  .sub { color: #64748b; font-size: 14px; margin-bottom: 24px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 24px; }
+  .card { background: #1e293b; border-radius: 8px; padding: 16px; border: 1px solid #334155; }
+  .label { font-size: 12px; color: #94a3b8; text-transform: uppercase; }
+  .value { font-size: 22px; font-weight: 600; margin-top: 4px; }
+  .green { color: #4ade80; } .red { color: #f87171; } .blue { color: #60a5fa; } .grey { color: #94a3b8; }
+  table { width: 100%; border-collapse: collapse; background: #1e293b; border-radius: 8px; overflow: hidden; }
+  th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #334155; font-size: 13px; }
+  th { background: #0f172a; color: #94a3b8; font-weight: 500; }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; }
+  .pill-h { background: #1e3a8a; color: #93c5fd; }
+  .pill-d { background: #422006; color: #fdba74; }
+  .pill-a { background: #4c0519; color: #fda4af; }
+  button { background: #2563eb; color: white; border: 0; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+  button:hover { background: #1d4ed8; }
+  button:disabled { background: #475569; cursor: not-allowed; }
+  .err { color: #f87171; font-size: 13px; margin-top: 8px; }
+
+  .panel { background: #1e293b; border-radius: 8px; padding: 20px; border: 1px solid #334155; margin-bottom: 16px; }
+  .panel h3 { font-size: 16px; margin-bottom: 4px; }
+  .panel .hint { color: #64748b; font-size: 12px; margin-bottom: 14px; }
+  .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-bottom: 12px; }
+  .form-grid label { display: flex; flex-direction: column; font-size: 11px; color: #94a3b8; text-transform: uppercase; gap: 4px; }
+  .form-grid input { background: #0f172a; border: 1px solid #334155; color: #e2e8f0; padding: 8px 10px; border-radius: 6px; font-size: 13px; font-family: inherit; }
+  .form-grid input:focus { outline: 1px solid #2563eb; border-color: #2563eb; }
+  .market-block { border-top: 1px dashed #334155; padding-top: 10px; margin-top: 10px; }
+  .market-block .group-label { font-size: 11px; color: #64748b; text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.5px; }
+  .verdict { padding: 12px; border-radius: 6px; margin-top: 12px; font-size: 13px; }
+  .verdict.value { background: #052e16; border: 1px solid #166534; color: #86efac; }
+  .verdict.novalue { background: #2c1010; border: 1px solid #7f1d1d; color: #fca5a5; }
+  .verdict.warn { background: #2a1d05; border: 1px solid #854d0e; color: #fde68a; margin-top: 8px; }
+  .picks-grid { display: grid; gap: 8px; margin-top: 10px; }
+  .pick-row { background: #0f172a; padding: 10px; border-radius: 6px; border-left: 3px solid #4ade80; font-size: 12px; }
+  .pick-row.no { border-left-color: #475569; opacity: 0.7; }
+  .row-flex { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .pill-mini { font-size: 10px; padding: 1px 6px; border-radius: 4px; background: #334155; color: #cbd5e1; }
+  details { margin-top: 8px; }
+  details summary { cursor: pointer; color: #94a3b8; font-size: 12px; }
+  details > div { margin-top: 8px; }
+
+  .lg-btn { background:#334155; color:#cbd5e1; padding:6px 12px; font-size:12px; border-radius:999px; }
+  .lg-btn:hover { background:#475569; }
+  .lg-btn.lg-active { background:#2563eb; color:white; }
+  .league-section { margin-top: 16px; }
+  .league-section h4 { font-size: 14px; color:#94a3b8; text-transform: uppercase; margin-bottom: 8px; letter-spacing: 0.5px; }
+  .match-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
+  .match-card {
+    background:#1e293b; border:1px solid #334155; border-radius:8px; padding:14px;
+    cursor:pointer; transition: all 0.15s ease;
+  }
+  .match-card:hover {
+    background:#334155; border-color:#2563eb; transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  }
+  .match-card .teams { font-size:14px; font-weight:600; margin-bottom:6px; }
+  .match-card .meta { font-size:11px; color:#94a3b8; display: flex; justify-content: space-between; align-items:center; }
+  .match-card .live-badge { background:#7f1d1d; color:#fca5a5; padding:2px 8px; border-radius:4px; font-size:10px; font-weight:600; }
+  .match-card .today-badge { background:#854d0e; color:#fde68a; padding:2px 8px; border-radius:4px; font-size:10px; font-weight:600; }
+  .match-card .scheduled-badge { background:#1e3a8a; color:#93c5fd; padding:2px 8px; border-radius:4px; font-size:10px; font-weight:600; }
+  .tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid #334155; }
+  .tab { padding: 10px 16px; background: transparent; color: #94a3b8; border-radius: 6px 6px 0 0; }
+  .tab.active { background: #1e293b; color: #e2e8f0; border-bottom: 2px solid #2563eb; }
+  .tab-pane { display: none; }
+  .tab-pane.active { display: block; }
+</style>
+</head>
+<body>
+
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+  <div>
+    <h1 style="margin-bottom:0">Tipster IA</h1>
+    <p class="sub" style="margin-bottom:0">Análisis inteligente con búsqueda web</p>
+  </div>
+  <div id="mini-metrics" style="font-size:12px;color:#94a3b8;text-align:right">
+    <div>Banca: <span id="mm-bank" class="green">€1000</span></div>
+    <div>Apuestas: <span id="mm-bets">0</span> · ROI: <span id="mm-roi" class="grey">+0.0%</span></div>
+  </div>
+</div>
+
+<div class="tabs">
+  <button class="tab active" onclick="showTab('home')">🏠 Partidos</button>
+  <button class="tab" onclick="showTab('parlay')" style="opacity:0.7">🔗 Combinadas</button>
+  <button class="tab" onclick="showTab('manual')" style="opacity:0.5;font-size:11px">⚙️ Avanzado</button>
+</div>
+
+<!-- Casa de apuestas estilo home -->
+<div id="tab-home" class="tab-pane active">
+  <div class="panel">
+    <h3>🏠 Partidos destacados</h3>
+    <p class="hint">Click en cualquier partido para que la IA lo analice automáticamente. Cubre Liga 1 Perú, Premier, La Liga, Serie A, Bundesliga, Ligue 1, Champions, Sudamericana y más.</p>
+    <div class="row-flex" style="margin-top:8px">
+      <button onclick="loadFeatured('all')" class="lg-btn lg-active" id="lg-all">Todas</button>
+      <button onclick="loadFeatured('liga1peru')" class="lg-btn" id="lg-liga1peru">🇵🇪 Liga 1 Perú</button>
+      <button onclick="loadFeatured('premier')" class="lg-btn" id="lg-premier">🏴󠁧󠁢󠁥󠁮󠁧󠁿 Premier</button>
+      <button onclick="loadFeatured('laliga')" class="lg-btn" id="lg-laliga">🇪🇸 La Liga</button>
+      <button onclick="loadFeatured('seriea')" class="lg-btn" id="lg-seriea">🇮🇹 Serie A</button>
+      <button onclick="loadFeatured('bundesliga')" class="lg-btn" id="lg-bundesliga">🇩🇪 Bundesliga</button>
+      <button onclick="loadFeatured('ligue1')" class="lg-btn" id="lg-ligue1">🇫🇷 Ligue 1</button>
+      <button onclick="loadFeatured('champions')" class="lg-btn" id="lg-champions">🏆 Champions</button>
+      <button onclick="loadFeatured('sudamericana')" class="lg-btn" id="lg-sudamericana">🌎 Sudamericana</button>
+      <button onclick="refreshFeatured()" id="lg-refresh" style="margin-left:auto;background:#475569">↻ Refrescar</button>
+    </div>
+  </div>
+  <div id="home-content"></div>
+  <div id="home-analysis" style="margin-top:16px"></div>
+</div>
+
+<!-- IA Smart -->
+<div id="tab-ai" class="tab-pane">
+  <div class="panel">
+    <h3>🤖 Análisis Inteligente con IA + Búsqueda Web</h3>
+    <p class="hint">Escribe solo el partido (ej. "Real Madrid vs Barcelona"). La IA busca en internet form, h2h, lesiones, alineaciones y devuelve probabilidades calibradas para todos los mercados. Si pegas cuotas de tu casa, también te dice cuáles tienen value.</p>
+    <div id="ai-status" class="hint"></div>
+    <div style="position:relative">
+      <input id="ai-query" placeholder='Escribe un equipo o partido — ej. "Universitario", "Real Madrid"' autocomplete="off" style="width:100%;background:#0f172a;border:1px solid #334155;color:#e2e8f0;padding:12px 14px;border-radius:6px;font-size:15px;font-family:inherit;margin-top:6px">
+      <div id="ai-suggestions" style="display:none;position:absolute;top:100%;left:0;right:0;background:#1e293b;border:1px solid #334155;border-top:none;border-radius:0 0 6px 6px;max-height:300px;overflow-y:auto;z-index:10"></div>
+    </div>
+
+    <details style="margin-top:14px">
+      <summary>Cuotas (opcional, para detectar value)</summary>
+      <div class="market-block">
+        <div class="group-label">1X2</div>
+        <div class="form-grid">
+          <label>Local <input id="ai-o-home" type="number" step="0.01"></label>
+          <label>Empate <input id="ai-o-draw" type="number" step="0.01"></label>
+          <label>Visitante <input id="ai-o-away" type="number" step="0.01"></label>
+        </div>
+      </div>
+      <div class="market-block">
+        <div class="group-label">BTTS / Over-Under 2.5</div>
+        <div class="form-grid">
+          <label>BTTS Sí <input id="ai-o-bttsy" type="number" step="0.01"></label>
+          <label>BTTS No <input id="ai-o-bttsn" type="number" step="0.01"></label>
+          <label>Over 2.5 <input id="ai-o-over" type="number" step="0.01"></label>
+          <label>Under 2.5 <input id="ai-o-under" type="number" step="0.01"></label>
+        </div>
+      </div>
+    </details>
+
+    <button id="btn-ai" onclick="aiAnalyze()" style="margin-top:12px">🚀 Analizar con IA</button>
+    <span id="ai-err" class="err"></span>
+    <p class="hint" style="margin-top:8px">⏳ Cada análisis tarda 15-40 segundos (la IA hace búsqueda web real). Costo estimado: $0.05-0.10.</p>
+  </div>
+
+  <div id="ai-result"></div>
+</div>
+
+<!-- Auto-scan -->
+<div id="tab-auto" class="tab-pane">
+  <h2>🎯 Picks recomendados (top 10) <button onclick="loadPicks()">↻ Refrescar</button></h2>
+  <div id="picks-err" class="err"></div>
+  <table id="picks">
+    <thead><tr>
+      <th>Partido</th><th>Liga</th><th>Mercado</th><th>Sel.</th><th>Cuota</th>
+      <th>p_modelo</th><th>EV</th><th>Stake</th><th>Casa</th>
+    </tr></thead>
+    <tbody></tbody>
+  </table>
+</div>
+
+<!-- Análisis manual -->
+<div id="tab-manual" class="tab-pane">
+
+  <!-- Buscador inteligente -->
+  <div class="panel">
+    <h3>🔍 Buscar partido por equipo</h3>
+    <p class="hint">Escribe el nombre de un equipo (ej. "Liverpool", "Real Madrid", "Universitario"). Si está en la base, te lo muestra y al hacer click la IA analiza TODOS los mercados sin que tengas que poner cuotas.</p>
+    <input id="search-input" placeholder="Empieza a escribir el nombre del equipo..." style="width:100%;background:#0f172a;border:1px solid #334155;color:#e2e8f0;padding:10px 12px;border-radius:6px;font-size:14px;font-family:inherit">
+    <div id="search-results" style="margin-top:10px"></div>
+  </div>
+
+  <!-- Manual con cuotas -->
+  <div class="panel">
+    <h3>📝 ...o pega cuotas manualmente</h3>
+    <p class="hint">Si tu partido no aparece en la búsqueda, o quieres analizar con cuotas de tu casa (Apuesta Total, etc.), llena el formulario abajo.</p>
+
+    <div class="form-grid">
+      <label>Equipo local
+        <input id="m-home" placeholder="Ej. Universitario" autocomplete="off">
+      </label>
+      <label>Equipo visitante
+        <input id="m-away" placeholder="Ej. Sporting Cristal" autocomplete="off">
+      </label>
+      <label>Liga (opcional)
+        <input id="m-league" placeholder="Liga 1 Perú">
+      </label>
+      <label>Casa
+        <input id="m-book" value="Apuesta Total">
+      </label>
+    </div>
+
+    <div class="market-block">
+      <div class="group-label">1X2 — Resultado</div>
+      <div class="form-grid">
+        <label>Local <input id="o-home" type="number" step="0.01" placeholder="2.10"></label>
+        <label>Empate <input id="o-draw" type="number" step="0.01" placeholder="3.40"></label>
+        <label>Visitante <input id="o-away" type="number" step="0.01" placeholder="3.20"></label>
+      </div>
+    </div>
+
+    <div class="market-block">
+      <div class="group-label">BTTS — Ambos equipos marcan</div>
+      <div class="form-grid">
+        <label>Sí <input id="o-bttsy" type="number" step="0.01" placeholder="1.85"></label>
+        <label>No <input id="o-bttsn" type="number" step="0.01" placeholder="1.85"></label>
+      </div>
+    </div>
+
+    <div class="market-block">
+      <div class="group-label">Total goles 2.5</div>
+      <div class="form-grid">
+        <label>Over <input id="o-over" type="number" step="0.01" placeholder="1.92"></label>
+        <label>Under <input id="o-under" type="number" step="0.01" placeholder="1.78"></label>
+      </div>
+    </div>
+
+    <div class="market-block">
+      <div class="group-label">Banca y kickoff (opcional)</div>
+      <div class="form-grid">
+        <label>Banca actual <input id="m-bank" type="number" step="1" placeholder="1000"></label>
+        <label>Kickoff (ISO) <input id="m-kick" type="datetime-local"></label>
+      </div>
+    </div>
+
+    <button id="btn-analyze" onclick="analyze()">🔍 Analizar partido</button>
+    <span id="analyze-err" class="err"></span>
+  </div>
+
+  <div id="manual-result"></div>
+</div>
+
+<!-- Combinadas -->
+<div id="tab-parlay" class="tab-pane">
+  <div class="panel">
+    <h3>Calcular combinada (parlay)</h3>
+    <p class="hint">Añade entre 2 y 8 piernas. El sistema calcula cuota combinada, probabilidad combinada (asumiendo independencia), EV y stake conservador. ⚠️ Las combinadas son trampa de varianza — los stakes serán pequeños a propósito.</p>
+    <div id="legs-container"></div>
+    <div style="margin-top: 12px;">
+      <button onclick="addLeg()">+ Añadir pierna</button>
+      <button onclick="calcParlay()" id="btn-parlay" style="margin-left:8px">🧮 Calcular combinada</button>
+      <span id="parlay-err" class="err"></span>
+    </div>
+  </div>
+  <div id="parlay-result"></div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+
+function pct(v) { return (v * 100).toFixed(1) + '%'; }
+function plus(v) { return (v >= 0 ? '+' : '') + (v * 100).toFixed(1) + '%'; }
+
+function showTab(name) {
+  document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  event.target.classList.add('active');
+  $('tab-' + name).classList.add('active');
+}
+
+async function loadMetrics() {
+  try {
+    const r = await fetch('/api/dashboard/metrics');
+    if (!r.ok) return;
+    const m = await r.json();
+    if ($('mm-bank')) {
+      $('mm-bank').textContent = '€' + (m.bankroll || 0).toLocaleString();
+      $('mm-bank').className = (m.bankroll >= (m.initial_bankroll || 1000)) ? 'green' : 'red';
+    }
+    if ($('mm-bets')) $('mm-bets').textContent = m.total_bets || 0;
+    if ($('mm-roi')) {
+      $('mm-roi').textContent = plus(m.roi || 0);
+      $('mm-roi').className = m.roi > 0 ? 'green' : (m.roi < 0 ? 'red' : 'grey');
+    }
+  } catch (e) { /* silencioso */ }
+}
+
+async function loadPicks() {
+  $('picks-err').textContent = '';
+  try {
+    const r = await fetch('/api/bets/recommended?top_n=10');
+    if (!r.ok) {
+      const t = await r.text();
+      throw new Error(t);
+    }
+    const data = await r.json();
+    const tbody = $('picks').querySelector('tbody');
+    if (!data.picks || data.picks.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#94a3b8;padding:24px">No hay value bets en este momento.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = data.picks.map(p => `
+      <tr>
+        <td><strong>${p.home_team}</strong> vs <strong>${p.away_team}</strong><br><small style="color:#64748b">${new Date(p.kickoff).toLocaleString()}</small></td>
+        <td>${p.league}</td>
+        <td>${p.market}</td>
+        <td><span class="pill pill-${p.selection[0].toLowerCase() === 'h' ? 'h' : (p.selection[0].toLowerCase() === 'd' ? 'd' : 'a')}">${p.selection}</span></td>
+        <td><b>${p.odd.toFixed(2)}</b></td>
+        <td>${pct(p.p_model)}</td>
+        <td class="green">${plus(p.expected_value)}</td>
+        <td>€${p.suggested_stake.toFixed(2)}</td>
+        <td>${p.bookmaker}</td>
+      </tr>`).join('');
+  } catch (e) {
+    $('picks-err').textContent = 'Error: ' + e.message;
+  }
+}
+
+function getNum(id) {
+  const v = parseFloat($(id).value);
+  return isFinite(v) && v > 1.01 ? v : null;
+}
+
+async function analyze() {
+  $('analyze-err').textContent = '';
+  $('manual-result').innerHTML = '';
+  const home = $('m-home').value.trim();
+  const away = $('m-away').value.trim();
+  if (!home || !away) {
+    $('analyze-err').textContent = 'Indica equipo local y visitante.';
+    return;
+  }
+  const odds = {
+    home: getNum('o-home'), draw: getNum('o-draw'), away: getNum('o-away'),
+    btts_yes: getNum('o-bttsy'), btts_no: getNum('o-bttsn'),
+    over_25: getNum('o-over'), under_25: getNum('o-under'),
+  };
+  const hasOne = (odds.home && odds.draw && odds.away) ||
+                 (odds.btts_yes && odds.btts_no) ||
+                 (odds.over_25 && odds.under_25);
+  if (!hasOne) {
+    $('analyze-err').textContent = 'Pasa cuotas completas de al menos un mercado: 1X2, BTTS o O/U 2.5.';
+    return;
+  }
+
+  const payload = {
+    home_team: home,
+    away_team: away,
+    league: $('m-league').value || null,
+    bookmaker: $('m-book').value || 'Apuesta Total',
+    kickoff: $('m-kick').value ? new Date($('m-kick').value).toISOString() : null,
+    bankroll: parseFloat($('m-bank').value) || null,
+    odds,
+  };
+
+  $('btn-analyze').disabled = true;
+  $('btn-analyze').textContent = 'Analizando...';
+  try {
+    const r = await fetch('/api/manual/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!r.ok) {
+      const t = await r.text();
+      throw new Error(t);
+    }
+    const data = await r.json();
+    renderResult(data);
+  } catch (e) {
+    $('analyze-err').textContent = 'Error: ' + e.message;
+  } finally {
+    $('btn-analyze').disabled = false;
+    $('btn-analyze').textContent = '🔍 Analizar partido';
+  }
+}
+
+function renderResult(d) {
+  const verdictClass = d.value_picks.length > 0 ? 'value' : 'novalue';
+  let html = `
+    <div class="panel">
+      <h3>${d.home_team} vs ${d.away_team}</h3>
+      <p class="hint">${d.bookmaker} · Banca usada: €${d.bankroll.toLocaleString()} · Kickoff: ${new Date(d.kickoff).toLocaleString()}</p>
+
+      <div class="verdict ${verdictClass}">${d.summary}</div>
+  `;
+
+  if (d.warnings && d.warnings.length > 0) {
+    html += `<div class="verdict warn">⚠️ ${d.warnings.join(' · ')}</div>`;
+  }
+
+  // Probabilidades del modelo
+  const p = d.predictions;
+  html += `
+    <div class="market-block">
+      <div class="group-label">Probabilidades del modelo</div>
+      <div class="row-flex">
+        <span class="pill-mini">Local ${pct(p.p_home)}</span>
+        <span class="pill-mini">Empate ${pct(p.p_draw)}</span>
+        <span class="pill-mini">Visit. ${pct(p.p_away)}</span>
+        <span class="pill-mini">BTTS Sí ${pct(p.p_btts_yes)}</span>
+        <span class="pill-mini">Over 2.5 ${pct(p.p_over_25)}</span>
+      </div>
+    </div>
+  `;
+
+  // Picks de value
+  if (d.value_picks.length > 0) {
+    html += `<div class="market-block"><div class="group-label">✅ Value picks (apostar)</div><div class="picks-grid">`;
+    for (const a of d.value_picks) {
+      html += `
+        <div class="pick-row">
+          <div class="row-flex">
+            <span class="pmkt">${a.market} ${a.selection}</span>
+            <span class="pill-mini">@ ${a.odd.toFixed(2)}</span>
+            <span class="pill-mini">p=${pct(a.p_model)}</span>
+            <span class="pill-mini">p_fair=${pct(a.p_fair)}</span>
+            <span class="green"><b>EV ${plus(a.expected_value)}</b></span>
+            <span class="green"><b>Stake €${a.suggested_stake.toFixed(2)}</b></span>
+          </div>
+          <div style="color:#64748b;margin-top:4px">${a.rationale}</div>
+        </div>`;
+    }
+    html += `</div></div>`;
+  }
+
+  // Detalle de los demás mercados
+  const rejected = d.assessments.filter(a => !a.is_value);
+  if (rejected.length > 0) {
+    html += `
+      <details>
+        <summary>Mercados sin value (${rejected.length})</summary>
+        <div class="picks-grid">`;
+    for (const a of rejected) {
+      html += `
+        <div class="pick-row no">
+          <div class="row-flex">
+            <span class="pmkt">${a.market} ${a.selection}</span>
+            <span class="pill-mini">@ ${a.odd.toFixed(2)}</span>
+            <span class="pill-mini">p=${pct(a.p_model)}</span>
+            <span class="pill-mini">p_fair=${pct(a.p_fair)}</span>
+            <span class="grey">EV ${plus(a.expected_value)}</span>
+          </div>
+          <div style="color:#64748b;margin-top:4px">${a.rationale}</div>
+        </div>`;
+    }
+    html += `</div></details>`;
+  }
+
+  html += `</div>`;
+  $('manual-result').innerHTML = html;
+}
+
+// ---------- Casa de apuestas / Featured matches ----------
+let currentLeague = 'all';
+
+async function loadFeatured(league) {
+  currentLeague = league;
+  // toggle active button
+  document.querySelectorAll('.lg-btn').forEach(b => b.classList.remove('lg-active'));
+  $('lg-' + league).classList.add('lg-active');
+
+  $('home-content').innerHTML = `
+    <div class="panel" style="text-align:center;padding:32px">
+      <div style="font-size:32px;margin-bottom:12px">⏳</div>
+      <div class="hint">Buscando partidos del día con IA + Google...</div>
+      <div class="hint" style="margin-top:6px">Tarda 5-15 segundos la primera vez (después está en cache 30 min).</div>
+    </div>
+  `;
+  try {
+    const r = await fetch('/api/ai/featured?league=' + encodeURIComponent(league));
+    if (!r.ok) throw new Error(await r.text());
+    const data = await r.json();
+    renderFeatured(data);
+  } catch (e) {
+    let extra = '';
+    if (e.message && (e.message.includes('429') || e.message.includes('quota'))) {
+      extra = '<br><br>⚠️ <b>Cuota gratuita de Google agotada por hoy.</b> Esperá 24h o cambiá a Anthropic ($5 gratis en console.anthropic.com).';
+    } else if (e.message && e.message.includes('404')) {
+      extra = '<br><br>El servidor no tiene el endpoint cargado. Reinicia con <b>reset_y_arrancar.bat</b>';
+    }
+    $('home-content').innerHTML = `
+      <div class="panel">
+        <div class="err">${(e.message||'').substring(0,400)}</div>
+        ${extra}
+        <div style="margin-top:16px">
+          <button onclick="showInitialState()">🔍 Volver al buscador</button>
+        </div>
+      </div>`;
+  }
+}
+
+async function refreshFeatured() {
+  // Forzamos recarga (el cache es del backend, así que esto solo recarga la UI)
+  loadFeatured(currentLeague);
+}
+
+function getStatusBadge(s) {
+  const status = (s.status || '').toUpperCase();
+  if (status === 'EN VIVO' || status === 'LIVE') return `<span class="live-badge">🔴 EN VIVO</span>`;
+  if (status === 'HOY' || status === 'TODAY') return `<span class="today-badge">⏰ HOY</span>`;
+  if (s.kickoff) {
+    const d = new Date(s.kickoff);
+    const today = new Date();
+    if (d.toDateString() === today.toDateString()) return `<span class="today-badge">⏰ HOY</span>`;
+  }
+  return `<span class="scheduled-badge">PROGRAMADO</span>`;
+}
+
+function renderFeatured(data) {
+  if (!data.leagues || data.leagues.length === 0) {
+    $('home-content').innerHTML = `
+      <div class="panel" style="text-align:center;padding:24px">
+        <div class="hint">Sin partidos encontrados para esta liga en próximos 7 días.</div>
+        <div class="hint" style="margin-top:6px">Prueba otra liga o usa la pestaña 🤖 IA Smart para buscar uno específico.</div>
+      </div>`;
+    return;
+  }
+
+  let html = `<div class="hint" style="margin-bottom:12px">📊 ${data.total} partidos encontrados${data.cached ? ' · <span class="grey">desde cache</span>' : ' · datos frescos'}</div>`;
+
+  for (const lg of data.leagues) {
+    html += `<div class="league-section"><h4>🏆 ${lg.name}</h4><div class="match-grid">`;
+    for (const m of lg.matches) {
+      const ko = m.kickoff ? new Date(m.kickoff) : null;
+      const koStr = ko ? ko.toLocaleString([], {weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'}) : 'fecha ?';
+      const home = (m.home || '?').replace(/'/g, "\\'");
+      const away = (m.away || '?').replace(/'/g, "\\'");
+      html += `
+        <div class="match-card" onclick="analyzeFromCard('${home}','${away}')">
+          <div class="teams">${m.home || '?'}<br><span style="color:#64748b;font-size:11px">vs</span><br>${m.away || '?'}</div>
+          <div class="meta" style="margin-bottom:8px">
+            <span>${koStr}</span>
+            ${getStatusBadge(m)}
+          </div>
+          <button style="width:100%;background:#2563eb;font-size:12px;padding:6px" onclick="event.stopPropagation();analyzeFromCard('${home}','${away}')">🤖 Analizar con IA</button>
+        </div>`;
+    }
+    html += `</div></div>`;
+  }
+
+  $('home-content').innerHTML = html;
+}
+
+async function analyzeFromCard(home, away) {
+  // Análisis inline. Si away === '?' es búsqueda de un solo equipo.
+  const target = $('home-analysis');
+  const display = away && away !== '?' ? `${home} vs ${away}` : `Próximo partido de ${home}`;
+  const query = away && away !== '?' ? `${home} vs ${away}` : home;
+
+  target.innerHTML = `
+    <div class="panel" style="text-align:center;padding:32px;border:2px solid #2563eb">
+      <div style="font-size:32px;margin-bottom:12px">🤖</div>
+      <div><b>${display}</b></div>
+      <div class="hint" style="margin-top:12px">La IA está investigando en Google... 5-15 segundos.</div>
+      <div class="hint" style="margin-top:6px">Buscando: forma, h2h, lesiones, alineaciones probables.</div>
+    </div>
+  `;
+  target.scrollIntoView({behavior: 'smooth', block: 'start'});
+
+  try {
+    const r = await fetch('/api/ai/analyze', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ query }),
+    });
+    if (!r.ok) {
+      const txt = await r.text();
+      throw new Error(txt);
+    }
+    const data = await r.json();
+    renderAIResultTo(data, target);
+  } catch(e) {
+    let msg = e.message || 'Error desconocido';
+    let extra = '';
+    if (msg.includes('429') || msg.includes('quota')) {
+      extra = `<div class="verdict warn" style="margin-top:12px">
+        ⚠️ Cuota gratuita de Google agotada por hoy.<br>
+        Soluciones: <b>1)</b> esperar 24h al reset · <b>2)</b> usar Anthropic Claude (registro en console.anthropic.com te da $5 gratis = ~50-100 análisis)
+      </div>`;
+    } else if (msg.includes('404')) {
+      extra = `<div class="hint" style="margin-top:12px">El servidor no encontró el endpoint. Reinicia con doble click en <b>reset_y_arrancar.bat</b></div>`;
+    }
+    target.innerHTML = `<div class="panel"><div class="err"><b>Error:</b> ${msg.substring(0,300)}</div>${extra}</div>`;
+  }
+}
+
+function renderAIResultTo(d, target) {
+  // Llama al render existente y mueve el HTML al target
+  renderAIResult(d);
+  const result = $('ai-result').innerHTML;
+  $('ai-result').innerHTML = '';
+  target.innerHTML = `
+    <div class="panel" style="text-align:right;padding:8px;background:transparent;border:none">
+      <button onclick="$('home-analysis').innerHTML=''" style="background:#475569;font-size:11px;padding:4px 10px">✕ Cerrar análisis</button>
+    </div>
+    ${result}
+  `;
+}
+
+// NO auto-cargar — el usuario decide cuándo gastar cuota
+function showInitialState() {
+  $('home-content').innerHTML = `
+    <div class="panel" style="text-align:center;padding:48px 24px">
+      <div style="font-size:48px;margin-bottom:12px">⚽</div>
+      <h3 style="margin-bottom:8px">Tipster IA listo</h3>
+      <p class="hint" style="margin-bottom:20px">Escribe el nombre de un equipo o partido en el buscador de abajo,<br>o click en una liga para ver sus próximos partidos.</p>
+      <input id="quick-search" placeholder='Ej: "Real Madrid", "Universitario", "Liverpool Arsenal"' style="width:80%;max-width:500px;background:#0f172a;border:1px solid #334155;color:#e2e8f0;padding:12px 16px;border-radius:8px;font-size:15px;font-family:inherit;margin-bottom:12px">
+      <div><button onclick="quickSearch()" style="padding:10px 24px;font-size:14px">🤖 Analizar partido</button></div>
+      <p class="hint" style="margin-top:16px;font-size:11px">⚠️ Si Google Gemini te dio error 429 hoy, espera 24h o cambia a Anthropic ($5 gratis al registrarte en console.anthropic.com)</p>
+    </div>
+  `;
+  // Listener Enter
+  setTimeout(() => {
+    const inp = $('quick-search');
+    if (inp) inp.addEventListener('keydown', e => { if (e.key === 'Enter') quickSearch(); });
+    if (inp) inp.focus();
+  }, 100);
+}
+
+function quickSearch() {
+  const inp = $('quick-search');
+  if (!inp) return;
+  const q = inp.value.trim();
+  if (q.length < 3) { alert('Escribe al menos 3 letras'); return; }
+  // Parse: si tiene "vs", es partido completo. Si no, es solo equipo.
+  let home, away;
+  if (q.toLowerCase().includes(' vs ') || q.includes(' - ')) {
+    const parts = q.split(/\s+(?:vs|-)\s+/i);
+    home = parts[0].trim();
+    away = parts[1] ? parts[1].trim() : '';
+  } else {
+    home = q;
+    away = '';
+  }
+  if (away) {
+    analyzeFromCard(home, away);
+  } else {
+    // Solo un equipo → usa /analyze que busca su próximo partido
+    analyzeFromCard(home, '?');
+  }
+}
+
+showInitialState();
+
+// ---------- IA Autocomplete ----------
+let aiSuggestTimer = null;
+let aiSuggestController = null;
+
+function aiHideSuggestions() {
+  $('ai-suggestions').style.display = 'none';
+}
+
+function aiShowSuggestions(items) {
+  const box = $('ai-suggestions');
+  if (!items || items.length === 0) {
+    box.innerHTML = '<div style="padding:10px;color:#64748b;font-size:13px">Sin sugerencias para próximos 14 días.</div>';
+    box.style.display = 'block';
+    return;
+  }
+  box.innerHTML = items.map(s => {
+    const status = (s.status || '').toUpperCase();
+    let badge = '';
+    if (status === 'EN VIVO' || status === 'LIVE') {
+      badge = '<span style="background:#7f1d1d;color:#fca5a5;padding:1px 6px;border-radius:4px;font-size:10px;margin-left:6px">🔴 EN VIVO</span>';
+    } else if (status === 'HOY' || status === 'TODAY') {
+      badge = '<span style="background:#854d0e;color:#fde68a;padding:1px 6px;border-radius:4px;font-size:10px;margin-left:6px">⏰ HOY</span>';
+    } else if (s.kickoff) {
+      const d = new Date(s.kickoff);
+      const today = new Date();
+      if (d.toDateString() === today.toDateString()) {
+        badge = '<span style="background:#854d0e;color:#fde68a;padding:1px 6px;border-radius:4px;font-size:10px;margin-left:6px">⏰ HOY</span>';
+      }
+    }
+    return `
+    <div class="ai-sug" onclick="aiPickSuggestion('${(s.home||'').replace(/'/g,"\\'")}','${(s.away||'').replace(/'/g,"\\'")}')"
+         style="padding:10px 12px;cursor:pointer;border-bottom:1px solid #334155;font-size:13px"
+         onmouseover="this.style.background='#334155'" onmouseout="this.style.background='transparent'">
+      <div><b>${s.home||'?'}</b> vs <b>${s.away||'?'}</b>${badge}</div>
+      <div style="font-size:11px;color:#94a3b8;margin-top:2px">${s.league||'liga ?'} · ${s.kickoff ? new Date(s.kickoff).toLocaleString() : 'fecha ?'}</div>
+    </div>
+  `;}).join('');
+  box.style.display = 'block';
+}
+
+function aiPickSuggestion(home, away) {
+  $('ai-query').value = `${home} vs ${away}`;
+  aiHideSuggestions();
+  aiAnalyze(); // dispara el análisis automáticamente
+}
+
+async function aiFetchSuggestions(q) {
+  if (aiSuggestController) aiSuggestController.abort();
+  aiSuggestController = new AbortController();
+  try {
+    const r = await fetch('/api/ai/suggest?q=' + encodeURIComponent(q), {
+      signal: aiSuggestController.signal,
+    });
+    if (!r.ok) return;
+    const data = await r.json();
+    aiShowSuggestions(data.suggestions || []);
+  } catch (e) {
+    if (e.name !== 'AbortError') console.warn('Suggest error:', e);
+  }
+}
+
+$('ai-query').addEventListener('input', (e) => {
+  clearTimeout(aiSuggestTimer);
+  const q = e.target.value.trim();
+  if (q.length < 3) {
+    aiHideSuggestions();
+    return;
+  }
+  // Debounce 800ms para no martillar la API gratis
+  aiSuggestTimer = setTimeout(() => aiFetchSuggestions(q), 800);
+});
+
+$('ai-query').addEventListener('blur', () => {
+  // pequeño delay para que el click en una sugerencia tenga tiempo de registrarse
+  setTimeout(aiHideSuggestions, 200);
+});
+
+$('ai-query').addEventListener('focus', () => {
+  const q = $('ai-query').value.trim();
+  if (q.length >= 3) aiFetchSuggestions(q);
+});
+
+// ---------- IA Smart Analysis ----------
+async function checkAIStatus() {
+  try {
+    const r = await fetch('/api/ai/status');
+    const s = await r.json();
+    if (!s.configured) {
+      $('ai-status').innerHTML = `
+        <span class="red">⚠️ La IA no está configurada todavía.</span><br>
+        <span class="hint" style="display:block;margin-top:6px">
+          <b>Opción gratis</b>: añade <code style="background:#0f172a;padding:2px 6px;border-radius:4px">GOOGLE_API_KEY</code> en .env →
+          <a href="https://aistudio.google.com/apikey" target="_blank" style="color:#60a5fa">conseguir key gratis (sin tarjeta)</a><br>
+          <b>Opción paid</b>: añade <code style="background:#0f172a;padding:2px 6px;border-radius:4px">ANTHROPIC_API_KEY</code> →
+          <a href="https://console.anthropic.com/" target="_blank" style="color:#60a5fa">Anthropic ($5 gratis al empezar)</a>
+        </span>`;
+    } else {
+      $('ai-status').innerHTML = `<span class="green">✅ IA lista — provider: <b>${s.provider}</b> · modelo: ${s.model} · costo: ${s.cost_per_analysis}</span>`;
+    }
+  } catch(e) {
+    $('ai-status').innerHTML = '';
+  }
+}
+checkAIStatus();
+
+async function aiAnalyze() {
+  $('ai-err').textContent = '';
+  $('ai-result').innerHTML = '';
+  const query = $('ai-query').value.trim();
+  if (query.length < 3) {
+    $('ai-err').textContent = 'Escribe al menos un partido (ej. "Real Madrid vs Barcelona")';
+    return;
+  }
+  const odds = {
+    home: parseFloat($('ai-o-home').value) || null,
+    draw: parseFloat($('ai-o-draw').value) || null,
+    away: parseFloat($('ai-o-away').value) || null,
+    btts_yes: parseFloat($('ai-o-bttsy').value) || null,
+    btts_no: parseFloat($('ai-o-bttsn').value) || null,
+    over_25: parseFloat($('ai-o-over').value) || null,
+    under_25: parseFloat($('ai-o-under').value) || null,
+  };
+  const hasOdds = Object.values(odds).some(v => v !== null && isFinite(v));
+
+  $('btn-ai').disabled = true;
+  $('btn-ai').textContent = '🧠 Analizando... (15-40s)';
+  $('ai-result').innerHTML = `
+    <div class="panel" style="text-align:center;padding:32px">
+      <div style="font-size:32px;margin-bottom:12px">🧠</div>
+      <div class="hint">La IA está investigando el partido en la web... esto tarda 15-40 segundos.</div>
+      <div class="hint" style="margin-top:8px">Buscando: form reciente, h2h, lesiones, alineaciones probables...</div>
+    </div>
+  `;
+
+  try {
+    const r = await fetch('/api/ai/analyze', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ query, odds: hasOdds ? odds : null }),
+    });
+    if (!r.ok) {
+      const t = await r.text();
+      throw new Error(t);
+    }
+    const data = await r.json();
+    renderAIResult(data);
+  } catch(e) {
+    $('ai-result').innerHTML = '';
+    $('ai-err').textContent = 'Error: ' + e.message;
+  } finally {
+    $('btn-ai').disabled = false;
+    $('btn-ai').textContent = '🚀 Analizar con IA';
+  }
+}
+
+function renderAIResult(d) {
+  const cl = d.confidence_level;
+  const confColor = cl === 'HIGH' ? 'green' : cl === 'LOW' ? 'red' : 'blue';
+  const p = d.probabilities;
+
+  let html = `
+    <div class="panel">
+      <h3>🎯 ${d.matched_event}</h3>
+      <p class="hint">${d.league} · Kickoff: ${d.kickoff} · Confianza: <span class="${confColor}"><b>${cl}</b></span> · Costo análisis: $${d.cost_estimate_usd}</p>
+
+      <div class="market-block">
+        <div class="group-label">📋 Contexto</div>
+        <div style="font-size:13px;line-height:1.6">${d.context_summary}</div>
+      </div>
+
+      <div class="market-block">
+        <div class="group-label">📊 Forma reciente</div>
+        <div class="row-flex">
+          <span class="pill-mini">🏠 Local: ${d.home_form}</span>
+          <span class="pill-mini">🚗 Visit.: ${d.away_form}</span>
+        </div>
+      </div>
+
+      <div class="market-block">
+        <div class="group-label">⚔️ Head-to-Head</div>
+        <div style="font-size:13px">${d.h2h_summary}</div>
+      </div>
+
+      <div class="market-block">
+        <div class="group-label">🏥 Lesiones / Bajas</div>
+        <div style="font-size:13px">${d.injuries}</div>
+      </div>
+
+      <div class="market-block">
+        <div class="group-label">💡 Factores clave</div>
+        <ul style="margin-left:20px;font-size:13px;line-height:1.7">
+          ${d.key_factors.map(f => `<li>${f}</li>`).join('')}
+        </ul>
+      </div>
+
+      <div class="market-block">
+        <div class="group-label">📈 Probabilidades calibradas (IA)</div>
+        <div class="row-flex">
+          <span class="pill-mini">Local ${pct(p.home_win||0)}</span>
+          <span class="pill-mini">Empate ${pct(p.draw||0)}</span>
+          <span class="pill-mini">Visit. ${pct(p.away_win||0)}</span>
+          <span class="pill-mini">BTTS Sí ${pct(p.btts_yes||0)}</span>
+          <span class="pill-mini">Over 2.5 ${pct(p.over_25||0)}</span>
+          <span class="pill-mini">1X ${pct(p.double_chance_1x||0)}</span>
+          <span class="pill-mini">X2 ${pct(p.double_chance_x2||0)}</span>
+        </div>
+      </div>
+
+      <div class="verdict ${d.picks.some(x=>x.expected_value>0.05) ? 'value' : 'novalue'}">
+        <b>🎯 ${d.ai_recommendation}</b>
+      </div>
+  `;
+
+  if (d.picks && d.picks.length > 0) {
+    const valuePicks = d.picks.filter(p => p.expected_value !== null && p.expected_value >= 0.05);
+    if (valuePicks.length > 0) {
+      html += `<div class="market-block"><div class="group-label">✅ Picks con value</div><div class="picks-grid">`;
+      for (const pk of valuePicks) {
+        html += `
+          <div class="pick-row">
+            <div class="row-flex">
+              <span class="pmkt">${pk.market} ${pk.selection}</span>
+              <span class="pill-mini">@ ${pk.odd.toFixed(2)}</span>
+              <span class="pill-mini">p_IA ${pct(pk.p_model)}</span>
+              <span class="pill-mini">p_fair ${pct(pk.p_fair)}</span>
+              <span class="green"><b>EV ${plus(pk.expected_value)}</b></span>
+              <span class="green"><b>Stake €${pk.suggested_stake.toFixed(2)}</b></span>
+            </div>
+            <div style="color:#94a3b8;margin-top:4px;font-size:12px">${pk.reason}</div>
+          </div>`;
+      }
+      html += `</div></div>`;
+    }
+    const noValue = d.picks.filter(p => !valuePicks.includes(p));
+    if (noValue.length > 0) {
+      html += `<details style="margin-top:8px"><summary>Picks descartados (${noValue.length})</summary><div class="picks-grid">`;
+      for (const pk of noValue) {
+        html += `
+          <div class="pick-row no">
+            <span class="pmkt">${pk.market} ${pk.selection}</span> @ ${pk.odd?.toFixed(2)} —
+            <span class="grey">${pk.reason}</span>
+          </div>`;
+      }
+      html += `</div></details>`;
+    }
+  }
+
+  html += `
+    <details style="margin-top:12px">
+      <summary>📝 Razonamiento completo de la IA</summary>
+      <div style="font-size:13px;line-height:1.7;margin-top:8px;color:#cbd5e1">${d.rationale}</div>
+    </details>
+  `;
+
+  if (d.sources && d.sources.length > 0) {
+    html += `<details style="margin-top:8px"><summary>🔗 Fuentes consultadas</summary><ul style="margin-left:20px;margin-top:6px;font-size:12px">`;
+    for (const s of d.sources) {
+      html += `<li><a href="${s}" target="_blank" style="color:#60a5fa">${s}</a></li>`;
+    }
+    html += `</ul></details>`;
+  }
+
+  html += `</div>`;
+  $('ai-result').innerHTML = html;
+  $('ai-result').scrollIntoView({behavior: 'smooth', block: 'start'});
+}
+
+// ---------- Buscador de partidos ----------
+let searchTimer = null;
+
+$('search-input').addEventListener('input', (e) => {
+  clearTimeout(searchTimer);
+  const q = e.target.value;
+  if (q.length < 2) {
+    $('search-results').innerHTML = '';
+    return;
+  }
+  // Debounce 250ms para no martillar el backend
+  searchTimer = setTimeout(() => doSearch(q), 250);
+});
+
+async function doSearch(q) {
+  try {
+    const r = await fetch('/api/manual/search?q=' + encodeURIComponent(q));
+    if (!r.ok) throw new Error(await r.text());
+    const data = await r.json();
+    if (data.count === 0) {
+      $('search-results').innerHTML = `<div class="hint" style="color:#64748b;padding:8px">Sin resultados. Prueba con otro nombre o usa el formulario manual abajo.</div>`;
+      return;
+    }
+    let html = '<div class="picks-grid">';
+    for (const m of data.matches) {
+      html += `
+        <div class="pick-row" style="cursor:pointer;border-left-color:#60a5fa" onclick="analyzeFixture(${m.fixture_id})">
+          <div class="row-flex">
+            <span class="pmkt">${m.home_team} vs ${m.away_team}</span>
+            <span class="pill-mini">${m.league}</span>
+            <span class="pill-mini">${new Date(m.kickoff).toLocaleString()}</span>
+            <span class="pill-mini" style="background:#1e3a8a;color:#93c5fd">▶ Analizar</span>
+          </div>
+        </div>`;
+    }
+    html += '</div>';
+    $('search-results').innerHTML = html;
+  } catch (e) {
+    $('search-results').innerHTML = `<div class="err">Error: ${e.message}</div>`;
+  }
+}
+
+async function analyzeFixture(fixtureId) {
+  $('manual-result').innerHTML = '<div class="hint" style="padding:12px">⏳ Analizando partido...</div>';
+  try {
+    const r = await fetch(`/api/manual/analyze_fixture/${fixtureId}`);
+    if (!r.ok) throw new Error(await r.text());
+    const data = await r.json();
+    renderResult(data);
+    // Scroll suave al resultado
+    $('manual-result').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (e) {
+    $('manual-result').innerHTML = `<div class="err">Error: ${e.message}</div>`;
+  }
+}
+
+// ---------- Parlay / Combinadas ----------
+let legCounter = 0;
+
+function addLeg() {
+  legCounter++;
+  const div = document.createElement('div');
+  div.className = 'market-block';
+  div.id = `leg-${legCounter}`;
+  div.innerHTML = `
+    <div class="group-label">Pierna ${legCounter} <button onclick="removeLeg(${legCounter})" style="background:#7f1d1d;font-size:11px;padding:2px 8px;margin-left:8px">Eliminar</button></div>
+    <div class="form-grid">
+      <label>Local <input class="leg-home" placeholder="Equipo local"></label>
+      <label>Visitante <input class="leg-away" placeholder="Equipo visitante"></label>
+      <label>Mercado
+        <select class="leg-market" style="background:#0f172a;border:1px solid #334155;color:#e2e8f0;padding:8px;border-radius:6px;font-family:inherit;font-size:13px">
+          <option value="1X2">1X2</option>
+          <option value="DC">Doble oport.</option>
+          <option value="BTTS">BTTS</option>
+          <option value="OU25">Over/Under 2.5</option>
+        </select>
+      </label>
+      <label>Selección
+        <select class="leg-selection" style="background:#0f172a;border:1px solid #334155;color:#e2e8f0;padding:8px;border-radius:6px;font-family:inherit;font-size:13px">
+          <option value="HOME">HOME</option>
+          <option value="DRAW">DRAW</option>
+          <option value="AWAY">AWAY</option>
+          <option value="1X">1X</option>
+          <option value="X2">X2</option>
+          <option value="12">12</option>
+          <option value="YES">YES (BTTS)</option>
+          <option value="NO">NO (BTTS)</option>
+          <option value="OVER">OVER 2.5</option>
+          <option value="UNDER">UNDER 2.5</option>
+        </select>
+      </label>
+      <label>Cuota <input class="leg-odd" type="number" step="0.01" placeholder="2.10"></label>
+    </div>
+  `;
+  $('legs-container').appendChild(div);
+}
+
+function removeLeg(id) {
+  const el = $(`leg-${id}`);
+  if (el) el.remove();
+}
+
+async function calcParlay() {
+  $('parlay-err').textContent = '';
+  $('parlay-result').innerHTML = '';
+  const legDivs = document.querySelectorAll('#legs-container > .market-block');
+  if (legDivs.length < 2) {
+    $('parlay-err').textContent = 'Añade al menos 2 piernas.';
+    return;
+  }
+  const legs = [];
+  for (const d of legDivs) {
+    const home = d.querySelector('.leg-home').value.trim();
+    const away = d.querySelector('.leg-away').value.trim();
+    const market = d.querySelector('.leg-market').value;
+    const selection = d.querySelector('.leg-selection').value;
+    const odd = parseFloat(d.querySelector('.leg-odd').value);
+    if (!home || !away || !isFinite(odd) || odd <= 1.01) {
+      $('parlay-err').textContent = 'Cada pierna necesita local, visitante, mercado, selección y cuota válida (>1.01).';
+      return;
+    }
+    legs.push({ home_team: home, away_team: away, market, selection, odd });
+  }
+
+  $('btn-parlay').disabled = true;
+  $('btn-parlay').textContent = 'Calculando...';
+  try {
+    const r = await fetch('/api/manual/parlay', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ legs }),
+    });
+    if (!r.ok) {
+      const t = await r.text();
+      throw new Error(t);
+    }
+    const d = await r.json();
+    renderParlay(d);
+  } catch (e) {
+    $('parlay-err').textContent = 'Error: ' + e.message;
+  } finally {
+    $('btn-parlay').disabled = false;
+    $('btn-parlay').textContent = '🧮 Calcular combinada';
+  }
+}
+
+function renderParlay(d) {
+  const cls = d.is_value ? 'value' : 'novalue';
+  const verdict = d.is_value
+    ? `✅ COMBINADA CON VALUE — EV ${plus(d.expected_value)} · stake sugerido €${d.suggested_stake.toFixed(2)}`
+    : `❌ Sin value — EV ${plus(d.expected_value)} (insuficiente). NO apostar.`;
+
+  let html = `
+    <div class="panel">
+      <h3>Combinada de ${d.n_legs} piernas</h3>
+      <div class="verdict ${cls}">${verdict}</div>
+  `;
+
+  if (d.warnings && d.warnings.length > 0) {
+    for (const w of d.warnings) {
+      html += `<div class="verdict warn">⚠️ ${w}</div>`;
+    }
+  }
+
+  html += `
+    <div class="market-block">
+      <div class="group-label">Métricas combinadas</div>
+      <div class="row-flex">
+        <span class="pill-mini">Cuota: <b>${d.combined_odd.toFixed(2)}</b></span>
+        <span class="pill-mini">P(modelo): ${pct(d.combined_p_model)}</span>
+        <span class="pill-mini">P(implícita): ${pct(d.implied_p)}</span>
+        <span class="pill-mini">Edge: ${plus(d.edge)}</span>
+        <span class="pill-mini">Stake: €${d.suggested_stake.toFixed(2)}</span>
+      </div>
+    </div>
+    <div class="market-block">
+      <div class="group-label">Detalle por pierna</div>
+      <div class="picks-grid">
+  `;
+  for (const leg of d.legs) {
+    html += `
+      <div class="pick-row ${leg.p_model > 0.5 ? '' : 'no'}">
+        <div class="row-flex">
+          <span class="pmkt">${leg.home_team} vs ${leg.away_team}</span>
+          <span class="pill-mini">${leg.market} ${leg.selection}</span>
+          <span class="pill-mini">@ ${leg.odd.toFixed(2)}</span>
+          <span class="pill-mini">p_modelo ${pct(leg.p_model)}</span>
+        </div>
+      </div>`;
+  }
+  html += `</div></div></div>`;
+  $('parlay-result').innerHTML = html;
+}
+
+// Arranca con 2 piernas vacías por defecto
+addLeg();
+addLeg();
+
+loadMetrics();
+loadPicks();
+</script>
+</body>
+</html>
