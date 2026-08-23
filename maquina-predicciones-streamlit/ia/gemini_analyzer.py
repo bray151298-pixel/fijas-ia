@@ -186,28 +186,64 @@ INSTRUCCION:
     return prompt
 
 
+def _analizar_con_omniroute(prompt: str) -> dict[str, Any]:
+    """Llama a OmniRoute / OpenAI compatible endpoint."""
+    import requests
+    base_url = st.secrets.get("OMNIROUTE_BASE_URL", "http://localhost:20128/v1").rstrip("/")
+    api_key = st.secrets.get("OMNIROUTE_API_KEY", "sk-omniroute")
+    model = st.secrets.get("OMNIROUTE_MODEL", "deepseek-chat")
+
+    url = f"{base_url}/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": prompt},
+        ],
+        "temperature": 0.3,
+    }
+    resp = requests.post(url, headers=headers, json=payload, timeout=60)
+    resp.raise_for_status()
+    data = resp.json()
+    raw = data["choices"][0]["message"]["content"].strip()
+    # Limpiar markdown si viene envuelto
+    if raw.startswith("```json"):
+        raw = raw[7:]
+    if raw.startswith("```"):
+        raw = raw[3:]
+    if raw.endswith("```"):
+        raw = raw[:-3]
+    return json.loads(raw.strip())
+
+
 def analizar_partido(dossier: dict[str, Any]) -> dict[str, Any]:
     """
     Funcion principal: recibe el dossier completo y devuelve el JSON
-    parseado con el analisis de Gemini.
-
-    En caso de error de la API o de parseo, devuelve un dict con la clave
-    'error' explicando el problema, para que la UI lo muestre limpio.
+    parseado con el analisis de Gemini u OmniRoute.
     """
+    texto = ""
     try:
-        modelo = _configurar_gemini()
         prompt = _construir_prompt_partido(dossier)
+        # Si esta configurado OmniRoute en secrets, usarlo prioritariamente
+        if "OMNIROUTE_API_KEY" in st.secrets or "OMNIROUTE_BASE_URL" in st.secrets:
+            return _analizar_con_omniroute(prompt)
+
+        modelo = _configurar_gemini()
         respuesta = modelo.generate_content(prompt)
         texto = respuesta.text.strip()
         return json.loads(texto)
     except json.JSONDecodeError as exc:
         return {
-            "error": "Gemini devolvio un JSON invalido.",
+            "error": "El modelo devolvio un JSON invalido.",
             "detalle": str(exc),
-            "texto_crudo": texto if "texto" in dir() else "",
+            "texto_crudo": texto,
         }
     except Exception as exc:  # noqa: BLE001
         return {
-            "error": "Fallo la llamada a Gemini.",
+            "error": "Fallo la llamada a la IA.",
             "detalle": str(exc),
         }
