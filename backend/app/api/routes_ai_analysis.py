@@ -255,15 +255,18 @@ def _call_anthropic(query: str) -> tuple[dict, float]:
 def _call_omniroute(query: str) -> tuple[dict, float]:
     """Llama a OmniRoute / proxy OpenAI-compatible local o remoto."""
     from backend.app.config import settings
+    from backend.app.services.web_search_service import build_live_match_context
     import httpx
 
     today = _today_iso()
+    web_ctx = build_live_match_context(query)
     user_msg = (
-        f"Fecha actual: **{today}**. Analiza un partido que sea de HOY o FUTURO (kickoff >= {today}).\n\n"
-        f"Partido / equipo a analizar: **{query}**.\n\n"
-        f"Si te dieron solo un nombre de equipo, busca su PRÓXIMO partido programado (hoy o en "
-        f"los próximos 14 días). Devuelve EXCLUSIVAMENTE el JSON estructurado según el system prompt. "
-        f"NO devuelvas partidos ya finalizados. Si no encuentras un dato, di 'no disponible'."
+        f"Fecha actual del sistema: **{today}**.\n\n"
+        f"{web_ctx}\n\n"
+        f"INSTRUCCIONES:\n"
+        f"Analiza el partido o equipo: **{query}** usando los DATOS EN VIVO ENCONTRADOS EN LA WEB de arriba.\n"
+        f"Si es un equipo, busca su PRÓXIMO partido real programado (fecha exacta y hora de kickoff en formato ISO 'YYYY-MM-DDTHH:MM:SS').\n"
+        f"Devuelve EXCLUSIVAMENTE el JSON estructurado según el system prompt. NO devuelvas partidos ya finalizados."
     )
     url = f"{settings.omniroute_base_url.rstrip('/')}/chat/completions"
     headers = {
@@ -380,12 +383,16 @@ def _call_gemini(query: str) -> tuple[dict, float]:
     if not candidates:
         candidates.append(_pick_best_gemini_model(available))
 
+    from backend.app.services.web_search_service import build_live_match_context
     today = _today_iso()
+    web_ctx = build_live_match_context(query)
     prompt = (
-        f"Fecha actual: **{today}**. Analiza un partido que sea de HOY o FUTURO (kickoff >= {today}).\n\n"
-        f"Partido / equipo a analizar: **{query}**.\n\n"
-        f"Si te dieron solo el nombre de un equipo, busca su PRÓXIMO partido programado (hoy o en los próximos 14 días).\n\n"
-        f"Incluye: fecha estimada, alineación probable, lesiones clave, forma reciente (últimos 5), head-to-head, contexto.\n"
+        f"Fecha actual del sistema: **{today}**.\n\n"
+        f"{web_ctx}\n\n"
+        f"INSTRUCCIONES:\n"
+        f"Analiza el partido o equipo: **{query}** usando los DATOS EN VIVO ENCONTRADOS EN LA WEB de arriba.\n"
+        f"Si es un equipo, busca su PRÓXIMO partido real programado (fecha exacta y hora de kickoff en formato ISO 'YYYY-MM-DDTHH:MM:SS').\n"
+        f"Incluye: fecha real, alineación probable, lesiones clave, forma reciente (últimos 5), head-to-head, contexto.\n"
         f"Devuelve EXCLUSIVAMENTE un JSON válido con la estructura del system prompt — sin markdown, sin texto antes ni después.\n"
         f"NO devuelvas partidos ya finalizados."
     )
