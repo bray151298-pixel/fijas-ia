@@ -390,9 +390,9 @@ def _call_gemini(query: str) -> tuple[dict, float]:
         f"Fecha actual del sistema: **{today}**.\n\n"
         f"{web_ctx}\n\n"
         f"INSTRUCCIONES:\n"
-        f"Analiza el partido o equipo: **{query}** usando los DATOS EN VIVO ENCONTRADOS EN LA WEB de arriba.\n"
-        f"Si es un equipo, busca su PRÓXIMO partido real programado (fecha exacta y hora de kickoff en formato ISO 'YYYY-MM-DDTHH:MM:SS').\n"
-        f"Incluye: fecha real, alineación probable, lesiones clave, forma reciente (últimos 5), head-to-head, contexto.\n"
+        f"Analiza el partido o equipo: **{query}** usando estrictamente los datos de arriba.\n"
+        f"REGLA OBLIGATORIA: Si arriba aparece un 'CALENDARIO OFICIAL EN VIVO (ESPN)', utiliza OBLIGATORIAMENTE ese partido real como matched_event, su liga y su kickoff oficial exacto.\n"
+        f"Incluye: alineación probable, lesiones clave, forma reciente (últimos 5), head-to-head, contexto y probabilidades calibradas.\n"
         f"Devuelve EXCLUSIVAMENTE un JSON válido con la estructura del system prompt — sin markdown, sin texto antes ni después.\n"
         f"NO devuelvas partidos ya finalizados."
     )
