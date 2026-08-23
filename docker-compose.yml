@@ -12,14 +12,24 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
 
+  omniroute:
+    image: diegosouzapw/omniroute:latest
+    ports:
+      - "20128:20128"
+    volumes:
+      - omniroute_data:/app/data
+    restart: unless-stopped
+
   api:
     build: .
     environment:
       DATABASE_URL: postgresql+psycopg2://tipster:tipster@db:5432/tipster
+      OMNIROUTE_BASE_URL: http://omniroute:20128/v1
     env_file:
       - .env
     depends_on:
       - db
+      - omniroute
     ports:
       - "8000:8000"
     command: ["uvicorn", "backend.app.main:app", "--host", "0.0.0.0", "--port", "8000"]
@@ -28,11 +38,14 @@ services:
     build: .
     environment:
       DATABASE_URL: postgresql+psycopg2://tipster:tipster@db:5432/tipster
+      OMNIROUTE_BASE_URL: http://omniroute:20128/v1
     env_file:
       - .env
     depends_on:
       - db
+      - omniroute
     command: ["python", "-m", "backend.app.ml.retrain_scheduler"]
 
 volumes:
   pgdata:
+  omniroute_data:
