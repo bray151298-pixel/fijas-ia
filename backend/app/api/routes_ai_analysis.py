@@ -351,29 +351,18 @@ _FALLBACK_CHAIN = [
 ]
 
 
-def _try_gemini_model(model_name: str, prompt: str, with_search: bool = True):
-    """Intenta una llamada a Gemini con un modelo específico.
-    Devuelve (response, error). error=None si éxito.
-    """
+def _try_gemini_model(model_name: str, prompt: str):
+    """Intenta una llamada a Gemini con un modelo específico."""
     import google.generativeai as genai
     try:
-        kwargs = {"model_name": model_name, "system_instruction": SYSTEM_PROMPT}
-        if with_search:
-            kwargs["tools"] = "google_search_retrieval"
-        model = genai.GenerativeModel(**kwargs)
+        model = genai.GenerativeModel(model_name=model_name, system_instruction=SYSTEM_PROMPT)
         return model.generate_content(prompt), None
     except Exception as e:
         return None, e
 
 
 def _call_gemini(query: str) -> tuple[dict, float]:
-    """Llama a Gemini con fallback automático ante 429 (quota exceeded) o 404 (modelo no existe).
-
-    Estrategia:
-      1. Intenta el modelo configurado en .env
-      2. Si falla, intenta cada modelo de _FALLBACK_CHAIN que esté en la lista disponible
-      3. Para cada modelo, primero intenta CON web search, luego SIN web search
-    """
+    """Llama a Gemini con fallback automático ante 429 o 404."""
     from backend.app.config import settings
     import google.generativeai as genai
 
@@ -382,29 +371,23 @@ def _call_gemini(query: str) -> tuple[dict, float]:
     available = _list_gemini_models(settings.google_api_key)
     available_set = set(available)
 
-    # Construye lista ordenada de modelos a probar
     candidates = []
     if settings.google_model in available_set:
         candidates.append(settings.google_model)
     for m in _FALLBACK_CHAIN:
         if m in available_set and m not in candidates:
             candidates.append(m)
-    # Si nada del chain está disponible, mete cualquier flash no-preview
     if not candidates:
         candidates.append(_pick_best_gemini_model(available))
 
     today = _today_iso()
     prompt = (
-        f"Fecha actual: **{today}**. El partido que analizo es de HOY o FUTURO (kickoff >= {today}).\n\n"
-        f"Analiza el siguiente partido de fútbol: **{query}**. Si te dieron solo el nombre de un "
-        f"equipo, busca su PRÓXIMO partido programado (hoy o en los próximos 14 días).\n\n"
-        f"Busca en Google: fecha exacta, alineación probable, lesiones, forma reciente "
-        f"(últimos 5), head-to-head, contexto del partido. "
-        f"Devuelve EXCLUSIVAMENTE un JSON válido con la estructura del system prompt — sin "
-        f"markdown, sin texto antes ni después. Sé riguroso, no inventes números. "
-        f"NO devuelvas partidos finalizados — verifica que el kickoff sea >= {today}. "
-        f"Si el partido ya empezó (HOY pero más temprano), márcalo como EN VIVO y baja "
-        f"confidence_level a LOW porque cuotas pre-match ya no aplican."
+        f"Fecha actual: **{today}**. Analiza un partido que sea de HOY o FUTURO (kickoff >= {today}).\n\n"
+        f"Partido / equipo a analizar: **{query}**.\n\n"
+        f"Si te dieron solo el nombre de un equipo, busca su PRÓXIMO partido programado (hoy o en los próximos 14 días).\n\n"
+        f"Incluye: fecha estimada, alineación probable, lesiones clave, forma reciente (últimos 5), head-to-head, contexto.\n"
+        f"Devuelve EXCLUSIVAMENTE un JSON válido con la estructura del system prompt — sin markdown, sin texto antes ni después.\n"
+        f"NO devuelvas partidos ya finalizados."
     )
 
     last_error = None
@@ -412,26 +395,15 @@ def _call_gemini(query: str) -> tuple[dict, float]:
     response = None
 
     for cand in candidates:
-        for with_search in (True, False):
-            r, err = _try_gemini_model(cand, prompt, with_search)
-            if err is None:
-                response = r
-                used_model = cand
-                logger.info(f"Gemini exitoso con modelo='{cand}', web_search={with_search}")
-                break
-            err_str = str(err)
-            last_error = err_str
-            # 429 = quota; 404 = no existe; otros 4xx tampoco recuperan reintentando search
-            if "429" in err_str or "quota" in err_str.lower():
-                logger.warning(f"Modelo '{cand}': cuota agotada. Probando siguiente.")
-                break  # salta a próximo modelo (no insiste sin search)
-            if "404" in err_str:
-                logger.warning(f"Modelo '{cand}': no encontrado. Probando siguiente.")
-                break
-            # Otro error: intenta sin search
-            logger.warning(f"Modelo '{cand}' con search falló: {err}. Probando sin search.")
-        if response is not None:
+        r, err = _try_gemini_model(cand, prompt)
+        if err is None:
+            response = r
+            used_model = cand
+            logger.info(f"Gemini exitoso con modelo='{cand}'")
             break
+        err_str = str(err)
+        last_error = err_str
+        logger.warning(f"Modelo '{cand}' falló: {err}. Probando siguiente.")
 
     if response is None:
         raise RuntimeError(
@@ -568,7 +540,7 @@ def ai_suggest(q: str):
             try:
                 model = genai.GenerativeModel(
                     model_name=model_name,
-                    tools="google_search_retrieval",
+                    tools=[{"google_search": {}}],
                 )
                 resp = model.generate_content(prompt)
             except Exception:
@@ -687,7 +659,7 @@ def featured_matches(league: str = "all"):
             try:
                 model = genai.GenerativeModel(
                     model_name=model_name,
-                    tools="google_search_retrieval",
+                    tools=[{"google_search": {}}],
                 )
                 resp = model.generate_content(prompt)
             except Exception:
