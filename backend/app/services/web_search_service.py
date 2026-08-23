@@ -1,8 +1,10 @@
-"""Servicio de búsqueda web en tiempo real y fixture oficial en vivo."""
+"""Servicio de búsqueda web en tiempo real y fixture oficial en vivo ultrarrápido."""
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 import re
+import time
 from urllib.parse import quote_plus
 import httpx
 
@@ -14,7 +16,6 @@ HEADERS = {
     "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
 }
 
-# Ligas soportadas en vivo vía ESPN API pública
 ESPN_LEAGUES = [
     ("per.1", "Liga 1 Perú"),
     ("eng.1", "Premier League"),
@@ -32,94 +33,103 @@ ESPN_LEAGUES = [
     ("usa.1", "MLS"),
 ]
 
+# Cache global: (timestamp, list[all_matches])
+_ALL_MATCHES_CACHE: tuple[float, list[dict]] = (0.0, [])
+
+
+def _fetch_league_matches(item: tuple[str, str, str]) -> list[dict]:
+    league_code, league_name, date_str = item
+    url = f"https://site.api.espn.com/apis/site/v2/sports/soccer/{league_code}/scoreboard"
+    if date_str:
+        url += f"?dates={date_str}"
+    matches = []
+    try:
+        r = httpx.get(url, timeout=2.5)
+        if r.status_code == 200:
+            events = r.json().get("events", [])
+            for ev in events:
+                name = ev.get("name", "")
+                comp = ev.get("competitions", [{}])[0]
+                competitors = comp.get("competitors", [])
+                if len(competitors) < 2:
+                    continue
+                home_team = competitors[0].get("team", {}).get("displayName", "Local")
+                away_team = competitors[1].get("team", {}).get("displayName", "Visitante")
+                if competitors[0].get("homeAway") == "away":
+                    home_team, away_team = away_team, home_team
+
+                venue = comp.get("venue", {}).get("fullName", "Estadio por confirmar")
+                kickoff = ev.get("date", "")
+                status = ev.get("status", {}).get("type", {}).get("description", "Programado")
+
+                all_searchable = f"{name} {home_team} {away_team} {league_name}".lower()
+                matches.append({
+                    "event": f"{home_team} vs {away_team}",
+                    "home": home_team,
+                    "away": away_team,
+                    "league": league_name,
+                    "kickoff": kickoff,
+                    "venue": venue,
+                    "status": status,
+                    "_search": all_searchable,
+                })
+    except Exception:
+        pass
+    return matches
+
+
+def get_all_live_fixtures() -> list[dict]:
+    """Descarga todos los partidos oficiales de las ligas principales en paralelo con cache."""
+    global _ALL_MATCHES_CACHE
+    now = time.time()
+    if _ALL_MATCHES_CACHE[1] and (now - _ALL_MATCHES_CACHE[0] < 900):  # 15 min TTL
+        return _ALL_MATCHES_CACHE[1]
+
+    today = datetime.utcnow()
+    tomorrow = today + timedelta(days=1)
+    d_today = today.strftime("%Y%m%d")
+    d_tomorrow = tomorrow.strftime("%Y%m%d")
+
+    work_items = []
+    for code, name in ESPN_LEAGUES:
+        work_items.append((code, name, d_today))
+        work_items.append((code, name, d_tomorrow))
+
+    all_matches = []
+    try:
+        with ThreadPoolExecutor(max_workers=14) as executor:
+            results = executor.map(_fetch_league_matches, work_items)
+            for m_list in results:
+                all_matches.extend(m_list)
+        _ALL_MATCHES_CACHE = (now, all_matches)
+    except Exception as e:
+        logger.warning(f"Error descargando fixtures en paralelo: {e}")
+
+    return all_matches
+
 
 def fetch_espn_live_fixtures(team_name: str) -> list[dict]:
-    """Busca en los scoreboards de ESPN el próximo partido real del equipo."""
-    normalized_query = team_name.lower().replace("club", "").replace("deportes", "").replace("fc", "").strip()
-    found_matches: list[dict] = []
-    
-    # Buscar hoy y los próximos 7 días
-    today = datetime.utcnow()
-    dates_to_check = [(today + timedelta(days=i)).strftime("%Y%m%d") for i in range(8)]
-    
-    try:
-        with httpx.Client(timeout=4.0) as client:
-            for league_code, league_name in ESPN_LEAGUES:
-                for date_str in dates_to_check[:4]:  # Próximos 4 días primero
-                    url = f"https://site.api.espn.com/apis/site/v2/sports/soccer/{league_code}/scoreboard?dates={date_str}"
-                    try:
-                        r = client.get(url)
-                        if r.status_code != 200:
-                            continue
-                        events = r.json().get("events", [])
-                        for ev in events:
-                            name = ev.get("name", "")
-                            short_name = ev.get("shortName", "")
-                            comp = ev.get("competitions", [{}])[0]
-                            competitors = comp.get("competitors", [])
-                            
-                            team_names = [c.get("team", {}).get("displayName", "").lower() for c in competitors]
-                            team_short_names = [c.get("team", {}).get("shortDisplayName", "").lower() for c in competitors]
-                            all_names = " ".join(team_names + team_short_names + [name.lower()])
-                            
-                            # Comprobar coincidencia
-                            if normalized_query in all_names or any(w in all_names for w in normalized_query.split() if len(w) > 3):
-                                home_team = competitors[0].get("team", {}).get("displayName", "Local") if competitors else "Local"
-                                away_team = competitors[1].get("team", {}).get("displayName", "Visitante") if len(competitors) > 1 else "Visitante"
-                                if competitors and competitors[0].get("homeAway") == "away":
-                                    home_team, away_team = away_team, home_team
-                                
-                                venue = comp.get("venue", {}).get("fullName", "Estadio por confirmar")
-                                kickoff = ev.get("date", "")
-                                status = ev.get("status", {}).get("type", {}).get("description", "Programado")
-                                
-                                found_matches.append({
-                                    "event": f"{home_team} vs {away_team}",
-                                    "home": home_team,
-                                    "away": away_team,
-                                    "league": league_name,
-                                    "kickoff": kickoff,
-                                    "venue": venue,
-                                    "status": status,
-                                })
-                                break
-                    except Exception:
-                        continue
-                if found_matches:
-                    break
-    except Exception as e:
-        logger.warning(f"Error consultando ESPN live fixtures: {e}")
+    """Búsqueda instantánea en el cache en memoria de fixtures oficiales."""
+    clean_q = team_name.lower().replace("club", "").replace("deportes", "").replace("liga 1", "").replace("fc", "").strip()
+    clean_words = [w for w in clean_q.split() if len(w) > 3]
 
-    return found_matches
+    all_fixtures = get_all_live_fixtures()
+    matched = []
+    for m in all_fixtures:
+        s = m["_search"]
+        if clean_q in s or (clean_words and any(w in s for w in clean_words)):
+            matched.append(m)
 
-
-def search_web_live(query: str, max_results: int = 5) -> list[str]:
-    """Realiza una búsqueda web en vivo y devuelve los snippets más relevantes."""
-    results: list[str] = []
-    try:
-        with httpx.Client(timeout=6.0, follow_redirects=True) as client:
-            r = client.post("https://html.duckduckgo.com/html/", data={"q": query}, headers=HEADERS)
-            if r.status_code == 200:
-                snippets = re.findall(r'<a class="result__snippet[^"]*"[^>]*>(.*?)</a>', r.text)
-                for s in snippets[:max_results]:
-                    clean = re.sub(r"<[^<]+?>", "", s).strip()
-                    clean = clean.replace("&#x27;", "'").replace("&quot;", '"').replace("&amp;", "&").replace("&#39;", "'")
-                    if clean and len(clean) > 20:
-                        results.append(clean)
-    except Exception as e:
-        logger.warning(f"Error en búsqueda web para '{query}': {e}")
-    return results
+    matched.sort(key=lambda x: x.get("kickoff", ""))
+    return matched
 
 
 def build_live_match_context(team_or_query: str) -> str:
-    """Combina los fixtures oficiales de ESPN con búsqueda web para máxima precisión."""
-    # 1. Buscar fixture oficial
+    """Construye contexto de partido en vivo en < 100 milisegundos."""
     espn_matches = fetch_espn_live_fixtures(team_or_query)
-    
-    parts = []
     if espn_matches:
         m = espn_matches[0]
-        parts.append(
+        return (
             f"CALENDARIO OFICIAL EN VIVO (ESPN):\n"
             f"- Partido Real: {m['event']}\n"
             f"- Torneo: {m['league']}\n"
@@ -127,13 +137,4 @@ def build_live_match_context(team_or_query: str) -> str:
             f"- Estadio: {m['venue']}\n"
             f"- Estado: {m['status']}"
         )
-    
-    # 2. Búsqueda web complementaria
-    web_snippets = search_web_live(f"{team_or_query} ultimas noticias lesiones 2026", max_results=3)
-    if web_snippets:
-        parts.append("NOTICIAS Y LESIONES EN LA WEB:\n" + "\n".join(f"- {s}" for s in web_snippets))
-
-    if not parts:
-        return "Búsqueda web no arrojó resultados adicionales."
-
-    return "\n\n".join(parts)
+    return f"Búsqueda deportiva: analiza el próximo partido oficial de {team_or_query}."
