@@ -1,3 +1,14 @@
+import { VIP_PLANS_CATALOG, getPlanById, getAllActivePlans, PAYMENT_METHODS_CATALOG } from './src/support-engine/catalog/plansCatalog';
+import { classifyUserIntent, IntentType } from './src/support-engine/intents/intentClassifier';
+import { OBJECTIONS_RESPONSES } from './src/support-engine/conversation/objectionsEngine';
+import { ONBOARDING_GUIDE_TEXT } from './src/support-engine/conversation/faqEngine';
+import { evaluatePaymentFraud, calculateImageHash, registerValidatedPayment } from './src/support-engine/payments/fraudDetector';
+import { getOrCreateCustomer, updateCustomer, getAllCustomers } from './src/support-engine/crm/customerMemory';
+import { generateSingleUseVIPInvite } from './src/support-engine/vip/inviteManager';
+import { evaluateSubscriberRenewalAlerts } from './src/support-engine/vip/renewalScheduler';
+import { calculateCommercialAnalytics } from './src/support-engine/crm/salesAnalytics';
+import { saveStateToDisk, loadStateFromDisk } from './src/support-engine/storage/persistentStore';
+
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
@@ -1681,16 +1692,22 @@ async function processBotUpdate(update: any, botToken: string) {
       if (chatId) {
         if (cbData && cbData.startsWith("admin_approve_")) {
           const targetChatId = cbData.replace("admin_approve_", "");
-          const welcomeMsg = `🎉 <b>¡PAGO VERIFICADO Y APROBADO CON ÉXITO!</b>\n━━━━━━━━━━━━━━━━━━━━\n👑 <b>¡Bienvenido al Canal VIP Oficial de FIJAS IA!</b>\n\nTu suscripción ha sido confirmada por el Administrador.\n👉 <b>Haz clic en el enlace para unirte:</b>\n<a href="${VIP_CHANNEL_INVITE_LINK}">${VIP_CHANNEL_INVITE_LINK}</a>\n\n<i>¡Muchos éxitos y excelentes ganancias!</i>`;
+          // Generate single-use invite and register
+          const inviteRes = await generateSingleUseVIPInvite(VIP_CHANNEL_ID, "Miembro VIP", "👑 Pase VIP", botToken);
+          const vipInviteLink = inviteRes.inviteLink;
+          updateCustomer(targetChatId, { leadStatus: 'VIP_ACTIVE', paymentStatus: 'APPROVED', membershipStatus: 'ACTIVE', assignedInviteLink: vipInviteLink });
+
+          const welcomeMsg = `🎉 <b>¡PAGO VERIFICADO Y APROBADO CON ÉXITO!</b>\n━━━━━━━━━━━━━━━━━━━━\n👑 <b>¡Bienvenido al Canal VIP Oficial de FIJAS IA!</b>\n\nTu suscripción ha sido activada por el Administrador.\n👉 <b>Haz clic en el enlace para unirte (1 Solo Uso):</b>\n<a href="${vipInviteLink}">${vipInviteLink}</a>\n\n${ONBOARDING_GUIDE_TEXT}`;
           const userKb = {
             inline_keyboard: [
-              [{ text: "👑 UNIRSE AL CANAL VIP AHORA", url: VIP_CHANNEL_INVITE_LINK }]
+              [{ text: "👑 UNIRSE AL CANAL VIP AHORA", url: vipInviteLink }]
             ]
           };
           await sendRawTelegramMessage(targetChatId, welcomeMsg, userKb, botToken);
           await sendRawTelegramMessage(chatId, `✅ <b>COMPROBANTE APROBADO:</b> Se ha entregado el enlace de acceso VIP al usuario (ID: <code>${targetChatId}</code>).`, undefined, botToken);
           return;
         }
+
         
         if (cbData && cbData.startsWith("admin_reject_")) {
           const targetChatId = cbData.replace("admin_reject_", "");
@@ -1718,62 +1735,54 @@ async function processBotUpdate(update: any, botToken: string) {
       const isPhoto = Boolean(msg.photo && msg.photo.length > 0);
       const isDoc = Boolean(msg.document);
 
-      // Save user to active sessions
-      recentTelegramUsers.set(String(chatId), {
-        chatId,
-        name: userName,
-        username: userHandle,
-        lastSeen: Date.now()
-      });
+      // 1. Customer Profile in Memory
+      const customer = getOrCreateCustomer(chatId, userName, userHandle);
 
-      // Instant check for OTP or password recovery request via Telegram chat
+      // 2. Intent Classification Engine
+      const classified = classifyUserIntent(text, isPhoto || isDoc);
+      updateCustomer(chatId, { lastIntent: classified.intent });
+      console.log(`[IntentClassifier] User ${chatId} (${userName}) -> Intent: ${classified.intent} (Confidence: ${(classified.confidence * 100).toFixed(0)}%)`);
+
+      // 3. Instant OTP check for admin password recovery
       const lowerText = text.toLowerCase();
-      if (
-        lowerText.includes("/otp") || 
-        lowerText.includes("/recuperar") || 
-        lowerText.includes("/clave") || 
-        lowerText.includes("codigo") || 
-        lowerText.includes("código") || 
-        lowerText.includes("password") || 
-        lowerText.includes("recuperar") || 
-        lowerText.includes("otp") ||
-        lowerText.includes("admin")
-      ) {
+      if (lowerText.includes("/otp") || lowerText.includes("/recuperar") || lowerText.includes("/clave") || lowerText.includes("codigo") || lowerText.includes("código")) {
         const code = Math.floor(100000 + Math.random() * 900000).toString();
         const expiresAt = Date.now() + 10 * 60 * 1000;
         adminOtpStore.set("admin_root", { code, expiresAt });
         
-        const otpDirectMsg = `🔐 <b>CÓDIGO DE ACCESO / RECUPERACIÓN — FIJAS IA</b>
-━━━━━━━━━━━━━━━━━━━━
-👋 Hola <b>${userName}</b> (ID: <code>${chatId}</code>):
-
-Tu código OTP de verificación de 6 dígitos es:
-👉 <pre>${code}</pre> 👈
-
-⏳ <i>Válido durante los próximos 10 minutos.</i>
-Ingresa este código en el panel de recuperación del sistema web para restablecer tu contraseña.`;
-
+        const otpDirectMsg = `🔐 <b>CÓDIGO DE ACCESO / RECUPERACIÓN — FIJAS IA</b>\n━━━━━━━━━━━━━━━━━━━━\n👋 Hola <b>${userName}</b> (ID: <code>${chatId}</code>):\n\nTu código OTP de verificación es: <b><code>${code}</code></b>\n⏳ <i>Válido durante los próximos 10 minutos.</i>`;
         await sendRawTelegramMessage(chatId, otpDirectMsg, undefined, botToken);
         return;
       }
 
-      // 1. Voucher Receipt Flow (Photo / Document sent to bot)
+      // 4. Voucher Receipt Flow with SHA-256 Anti-Fraud
       if (isPhoto || isDoc) {
-        // A. Confirm receipt to client immediately
+        updateCustomer(chatId, { leadStatus: 'PAYMENT_STARTED', paymentStatus: 'PENDING_VALIDATION' });
+
         const clientReceiptMsg = `📩 <b>¡Comprobante recibido con éxito!</b>\n━━━━━━━━━━━━━━━━━━━━\nTu comprobante ha sido registrado y enviado al <b>Administrador (@brayyusman)</b> para su validación inmediata.\n\n⏳ <i>En breves momentos recibirás tu enlace privado de acceso al Canal VIP.</i>`;
         await sendRawTelegramMessage(chatId, clientReceiptMsg, undefined, botToken);
 
-        // B. Forward to Admin Bray (5261686165) with 1-Click Approve / Reject Buttons
         try {
           let fileId = "";
+          let imageHash = "hash_" + Date.now();
           if (isPhoto) {
             const largestPhoto = msg.photo[msg.photo.length - 1];
             fileId = largestPhoto.file_id;
+            imageHash = calculateImageHash(fileId);
           } else if (isDoc && msg.document?.file_id) {
             fileId = msg.document.file_id;
+            imageHash = calculateImageHash(fileId);
           }
 
-          const adminCaption = `🚨 <b>NUEVO COMPROBANTE DE PAGO RECIBIDO — FIJAS IA</b>\n━━━━━━━━━━━━━━━━━━━━\n👤 <b>Cliente:</b> <b>${userName}</b> (${userHandle || 'Sin username'})\n🆔 <b>ID Telegram:</b> <code>${chatId}</code>\n📅 <b>Fecha:</b> ${new Date().toLocaleString('es-PE', { timeZone: 'America/Lima' })}\n📝 <b>Mensaje:</b> <i>${text || 'Sin texto'}</i>\n\n👇 <b>Selecciona una acción:</b>`;
+          // Evaluate Fraud Score
+          const isVipActive = customer.membershipStatus === 'ACTIVE';
+          const fraudEval = evaluatePaymentFraud(imageHash, undefined, undefined, 39.90, isVipActive);
+          updateCustomer(chatId, { fraudScore: fraudEval.fraudScore });
+
+          const riskBadge = fraudEval.riskLevel === 'HIGH' ? '🔴 ALTO RIESGO' : (fraudEval.riskLevel === 'MEDIUM' ? '🟡 REVISAR' : '🟢 LIMPIO');
+          const reasonsList = fraudEval.reasons.length > 0 ? `\n${fraudEval.reasons.join('\n')}` : '';
+
+          const adminCaption = `🚨 <b>NUEVO COMPROBANTE DE PAGO — FIJAS IA</b>\n━━━━━━━━━━━━━━━━━━━━\n👤 <b>Cliente:</b> <b>${userName}</b> (${userHandle || 'Sin username'})\n🆔 <b>ID Telegram:</b> <code>${chatId}</code>\n🛡️ <b>Score Antifraude:</b> <b>${fraudEval.fraudScore}/100</b> [${riskBadge}]${reasonsList}\n📅 <b>Fecha:</b> ${new Date().toLocaleString('es-PE', { timeZone: 'America/Lima' })}\n📝 <b>Mensaje:</b> <i>${text || 'Sin texto'}</i>\n\n👇 <b>Selecciona una acción:</b>`;
 
           const adminButtons = {
             inline_keyboard: [
@@ -1809,116 +1818,44 @@ Ingresa este código en el panel de recuperación del sistema web para restablec
           } else {
             await sendRawTelegramMessage(ADMIN_TELEGRAM_ID, adminCaption, adminButtons, botToken);
           }
-          console.log(`[SupportBot] Voucher forwarded to Admin (${ADMIN_TELEGRAM_ID}) from user ${chatId}`);
+          console.log(`[SupportBot] Voucher forwarded to Admin (${ADMIN_TELEGRAM_ID}) from user ${chatId} (FraudScore: ${fraudEval.fraudScore})`);
         } catch (fwdErr) {
           console.error("Error forwarding voucher to admin:", fwdErr);
         }
         return;
       }
-      // 2. Detection of text receipt keywords without attached image
-      const receiptKeywords = ["comprobante", "constancia", "voucher", "yape", "plin", "transferencia", "adjunto", "pague", "pagué", "abono", "deposito", "depósito", "op:"];
-      const isReceiptQuery = receiptKeywords.some(k => lowerText.includes(k));
 
-      if (isReceiptQuery && !isPhoto && !isDoc) {
-        const askPhotoMsg = `📸 <b>¡Hola, ${userName}! Para activar tu acceso VIP necesitamos tu comprobante:</b>
-━━━━━━━━━━━━━━━━━━━━
-Por favor <b>envía la captura de pantalla o foto de tu pago</b> (Yape, Plin o Binance) directamente a este chat.
-
-Nuestro sistema con Inteligencia Artificial (Visión Neural) auditará automáticamente:
-• Monto exacto transferido
-• Número de operación
-• Fecha y cuenta de destino
-
-Una vez validado, recibirás de inmediato tu <b>enlace exclusivo de 1 solo uso</b> para unirte al Canal VIP.`;
-
-        await sendRawTelegramMessage(chatId, askPhotoMsg, KEYBOARDS.payment, botToken);
+      // 5. Handling Objections with Ethical AI Responses
+      if (OBJECTIONS_RESPONSES[classified.intent]) {
+        updateCustomer(chatId, { leadStatus: 'CONSIDERING' });
+        const objAnswer = OBJECTIONS_RESPONSES[classified.intent];
+        await sendRawTelegramMessage(chatId, objAnswer, KEYBOARDS.plans, botToken);
         return;
       }
 
-      // Deeplink arguments handling (/start planes, /start pagar, /start comprobante)
-      if (lowerText.startsWith("/start planes")) {
+      // 6. Plans and Pricing
+      if (classified.intent === 'PRICE' || classified.intent === 'PLANS') {
+        updateCustomer(chatId, { leadStatus: 'INTERESTED' });
         await sendRawTelegramMessage(chatId, MESSAGES.plans, KEYBOARDS.plans, botToken);
         return;
       }
-      if (lowerText.startsWith("/start pagar")) {
+
+      // 7. Payment Methods & Instructions
+      if (classified.intent === 'PAYMENT_METHOD' || classified.intent === 'PAYMENT_INSTRUCTIONS') {
+        updateCustomer(chatId, { leadStatus: 'PAYMENT_STARTED' });
         await sendRawTelegramMessage(chatId, MESSAGES.payment, KEYBOARDS.payment, botToken);
         return;
       }
-      if (lowerText.startsWith("/start comprobante")) {
-        const askVoucher = `📸 <b>¡Hola, ${userName}! Envía tu comprobante de pago:</b>\n━━━━━━━━━━━━━━━━━━━━\nPor favor envía la foto o captura de tu abono por <b>Yape, Plin o Binance</b> directamente a este chat.\n\nNuestro sistema lo reenviará al Administrador (@brayyusman) para entregarte tu enlace de acceso VIP de inmediato.`;
-        await sendRawTelegramMessage(chatId, askVoucher, KEYBOARDS.payment, botToken);
+
+      // 8. Human Support
+      if (classified.intent === 'HUMAN_SUPPORT') {
+        await sendRawTelegramMessage(chatId, OBJECTIONS_RESPONSES.HUMAN_SUPPORT, KEYBOARDS.plans, botToken);
         return;
       }
 
-      // 3. Greetings & Start Menu
-      const isGreeting = 
-        lowerText === "/start" || 
-        lowerText.startsWith("/start") || 
-        lowerText.startsWith("/menu") || 
-        lowerText.startsWith("/ayuda") ||
-        lowerText.startsWith("/help") ||
-        lowerText === "hola" || 
-        lowerText === "hol" || 
-        lowerText === "buenas" || 
-        lowerText === "buenos dias" || 
-        lowerText === "buenas tardes" || 
-        lowerText === "buenas noches" || 
-        lowerText === "hi" || 
-        lowerText === "hey" || 
-        lowerText === "inicio" || 
-        lowerText === "empezar" ||
-        lowerText === "menu";
-
-      if (isGreeting) {
+      // 9. Greetings & Start Menu
+      if (classified.intent === 'GREETING') {
         await sendRawTelegramMessage(chatId, MESSAGES.start(userName), KEYBOARDS.start, botToken);
-        return;
-      }
-
-      // 4. Plans & Pricing
-      const isPlansQuery = 
-        lowerText.startsWith("/planes") || 
-        lowerText === "planes" || 
-        lowerText.includes("precio") || 
-        lowerText.includes("costo") || 
-        lowerText.includes("tarifa") || 
-        lowerText.includes("membresia") || 
-        lowerText.includes("membresía") || 
-        lowerText === "vip";
-
-      if (isPlansQuery) {
-        await sendRawTelegramMessage(chatId, MESSAGES.plans, KEYBOARDS.plans, botToken);
-        return;
-      }
-
-      // 5. Payments
-      const isPaymentQuery = 
-        lowerText.startsWith("/pagar") || 
-        lowerText === "pagar" || 
-        lowerText.includes("yape") || 
-        lowerText.includes("plin") || 
-        lowerText.includes("binance") || 
-        lowerText.includes("usdt") || 
-        lowerText.includes("banco") || 
-        lowerText.includes("cuenta");
-
-      if (isPaymentQuery) {
-        await sendRawTelegramMessage(chatId, MESSAGES.payment, KEYBOARDS.payment, botToken);
-        return;
-      }
-
-      // 6. Stats & Historical Performance
-      const isStatsQuery = 
-        lowerText.startsWith("/stats") || 
-        lowerText === "stats" || 
-        lowerText.includes("estadistica") || 
-        lowerText.includes("estadística") || 
-        lowerText.includes("rentab") || 
-        lowerText.includes("acierto") || 
-        lowerText.includes("winrate") || 
-        lowerText.includes("historial");
-
-      if (isStatsQuery) {
-        await sendRawTelegramMessage(chatId, MESSAGES.stats, KEYBOARDS.stats, botToken);
         return;
       }
 
