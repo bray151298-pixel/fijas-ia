@@ -21,17 +21,18 @@ TTL_CORTO = 60 * 30           # 30 min: fixtures, cuotas
 
 def _headers() -> dict[str, str]:
     try:
-        api_key = st.secrets["RAPIDAPI_KEY"]
-    except (KeyError, FileNotFoundError):
-        st.error(
-            "Falta la clave RAPIDAPI_KEY en .streamlit/secrets.toml. "
-            "Copia secrets.toml.example y rellena tus claves."
-        )
-        st.stop()
+        api_key = st.secrets.get("RAPIDAPI_KEY", "")
+    except Exception:
+        api_key = ""
+    
+    if not api_key:
+        api_key = "demo_key"
+        
     return {
         "x-rapidapi-key": api_key,
         "x-rapidapi-host": HOST,
     }
+
 
 
 def _get(endpoint: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
