@@ -83,15 +83,15 @@ Las probabilidades 1X2 deben sumar 100. Los porcentajes son numeros (no strings)
 
 
 def _configurar_gemini() -> genai.GenerativeModel:
-    """Inicializa el cliente con la clave de Streamlit secrets."""
+    """Inicializa el cliente con la clave de Streamlit secrets o fallback."""
+    api_key = ""
     try:
-        api_key = st.secrets["GEMINI_API_KEY"]
-    except (KeyError, FileNotFoundError):
-        st.error(
-            "Falta la clave GEMINI_API_KEY en .streamlit/secrets.toml. "
-            "Copia secrets.toml.example y rellena tus claves."
-        )
-        st.stop()
+        api_key = st.secrets.get("GEMINI_API_KEY", "") or st.secrets.get("GOOGLE_API_KEY", "")
+    except Exception:
+        pass
+
+    if not api_key:
+        api_key = "AIzaSyCSSSoFRgd6_eQA0_d6Um07Iz9nI4eHHdo"
 
     genai.configure(api_key=api_key)
     return genai.GenerativeModel(
@@ -99,6 +99,7 @@ def _configurar_gemini() -> genai.GenerativeModel:
         generation_config=GENERATION_CONFIG,
         system_instruction=SYSTEM_PROMPT,
     )
+
 
 
 def _construir_prompt_partido(dossier: dict[str, Any]) -> str:
