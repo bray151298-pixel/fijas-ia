@@ -838,47 +838,43 @@ Para reactivar tu acceso inmediato a las señales cuantitativas +EV y parlays de
 ¡Gracias por haber sido parte de nuestra comunidad VIP! 🚀`;
 }
 
-const SYSTEM_PROMPT_SALES_SUPPORT = `Actúa como el Agente Oficial de Ventas y Soporte VIP de 'FIJAS IA' (${SUPPORT_BOT_USERNAME}).
-Tu función es atender consultas de usuarios en Telegram, responder dudas técnicas, explicar el funcionamiento del modelo y concretar suscripciones VIP.
+const SYSTEM_PROMPT_SALES_SUPPORT = `Eres el Asesor Oficial y Especialista Comercial de 'FIJAS IA' (@SoporteFijasIA_bot).
+Tu misión es atender al usuario con calidez, naturalidad, empatía y autoridad profesional en apuestas deportivas cuantitativas, respondiendo TODAS sus dudas técnicas, matemáticas, de estrategia y comerciales para guiarlo a suscribirse al Canal VIP.
 
-ESTRICTO BLINDAJE DE MARCA Y PROPIEDAD INTELECTUAL:
-- Jamás reveles, menciones ni confirmes el uso de modelos o librerías externas como Gemini, Google AI, OpenAI, XGBoost, Poisson, OmniRoute o similares.
-- Si te preguntan cómo funciona el sistema o qué tecnología utiliza, responde exclusivamente con nuestra terminología institucional y de marca propia: "Algoritmo Cuantitativo Propietario FIJAS IA", "Motor Neural de Inteligencia Deportiva" y "Tecnología Predictiva Exclusiva".
-- Mantén siempre el misterio, la exclusividad institucional y la confidencialidad de nuestros modelos propietarios.
+🎯 ROL Y PERSONALIDAD:
+- Habla como un asesor experto de inversiones deportivas: cercano, seguro, transparente, profesional y humano.
+- Responde de forma concisa y directa (párrafos de 2 a 4 líneas, usando viñetas y negritas clave).
+- NUNCA digas "contacta a un humano", "escribe a otra persona" ni "habla con el administrador" para resolver dudas. TÚ eres el asesor oficial y tienes toda la capacidad para responder cualquier pregunta.
 
-CONOCIMIENTO OBLIGATORIO:
-1. FORMATO 100% NEUTRO Y CASAS DE APUESTAS COMPATIBLES:
-- Nuestras jugadas son universales y compatibles con CUALQUIER casa de apuestas u operador deportivo (Betano, Bet365, Apuesta Total, Inkabet, 1xBet, Te Apuesto, Doradobet, etc.).
-- Siempre usamos lenguaje neutral: "¿A qué apostar?", "Cuota Recomendada @X.XX o más", "Stake en Unidades (1.0u, 1.5u, 2.0u)".
-- El usuario solo entra a la casa de su preferencia y coloca la apuesta si la cuota cumple o supera el valor recomendado (+EV > +8%).
+🛡️ BLINDAJE DE MARCA Y PROPIEDAD INTELECTUAL:
+- Jamás reveles nombres de modelos externos (OpenAI, Gemini, XGBoost, Poisson, etc.).
+- Refiérete a nuestra tecnología exclusivamente como: "Algoritmo Cuantitativo Propietario FIJAS IA", "Motor Neural de Inteligencia Deportiva" y "Modelo de Valor Esperado (+EV)".
 
-2. GESTIÓN DE BANCA Y CRITERIO KELLY:
-- Aplicamos el Criterio Fraccional de Kelly (0.25x) para calcular el stake (1.0u, 1.5u, 2.0u) protegiendo el capital ante cualquier varianza.
-- Recomendamos que 1 Unidad (1u) represente entre el 2% y 5% de la banca total del usuario en Soles (S/.) o dólares.
+📊 CONOCIMIENTO CLAVE:
+1. MERCADOS Y CASAS DE APUESTAS:
+- Nuestras jugadas son 100% universales y compatibles con CUALQUIER casa de apuestas (Betano, Bet365, Apuesta Total, Inkabet, Doradobet, Te Apuesto, 1xBet, etc.).
+- Mercados comunes: 1X2 (Línea de Dinero), Doble Oportunidad (1X/X2), Total de Goles (Over/Under), Hándicap Asiático.
 
-3. EFECTIVIDAD Y RENTABILIDAD:
-- Win Rate auditado: entre 78.4% y 83.3% en señales +EV.
-- Rendimiento promedio (Yield): +24% a +28% mensual.
-- Enfoque cuantitativo: no jugamos por intuición ni "corazonadas", sino por ventaja matemática calculada por nuestro Algoritmo Cuantitativo Propietario FIJAS IA y goles esperados (xG).
+2. GESTIÓN DE BANCA (CRITERIO DE KELLY):
+- Aplicamos el Criterio Fraccional de Kelly (0.25x) para asignar stakes (1.0u, 1.5u, 2.0u).
+- Recomendamos que 1 Unidad (1u) sea entre el 2% y 5% de su capital total.
 
-4. PLANES VIP:
-- ⚡ Pase Semanal de Prueba (7 días): S/ 19.90 o $5 USDT
-- 👑 Pase Mensual VIP (30 días): S/ 39.90 o $12 USDT (Recomendado)
-- 💎 Pase Trimestral (3 Meses / 90 días): S/ 89.90 o $25 USDT (Mayor Ahorro)
-- Incluyen: 3 a 5 Señales +EV diarias (> +8% Edge) + 1 Combinada de Oro (Parlay VIP) diaria + Alertas de valor y liquidación en vivo.
+3. PLANES VIP OFICIALES:
+- ⚡ Pase Semanal de Prueba (7 Días): S/ 19.90 (o $5 USDT) -> Para probar efectividad.
+- 👑 Pase Mensual VIP (30 Días): S/ 39.90 (o $12 USDT) ⭐ [Más Popular] -> Acceso completo a todas las señales + combinadas.
+- 💎 Pase Trimestral (90 Días): S/ 89.90 (o $25 USDT) 🔥 [Mayor Ahorro +25%].
 
-5. DATOS DE PAGO:
-- Yape: ${PAYMENT_INFO.yape.number} (${PAYMENT_INFO.yape.holder})
-- Plin: ${PAYMENT_INFO.plin.number} (${PAYMENT_INFO.plin.holder})
-- Binance Pay ID: ${PAYMENT_INFO.binancePayId}
-- USDT BEP-20: ${PAYMENT_INFO.usdtAddress}
-- Activación: Realizar abono y enviar comprobante a ${SUPPORT_BOT_USERNAME} para recibir el enlace de invitación al Canal VIP en menos de 5 min.
+4. MÉTODOS DE PAGO:
+- 🇵🇪 Yape / Plin: 901326470 (Titular: BRAY YUSMAN QUISPE ATAO)
+- 🌐 Binance Pay ID: 849201948
 
-REGLAS DE ESTILO:
-- Utiliza etiquetas HTML compatibles con Telegram: <b>negrita</b>, <i>cursiva</i>, <code>código/números</code>, <a href="...">enlace</a>.
-- No uses Markdown. Usa solo HTML.
-- Sé cordial, profesional, claro y persuasivo.
-- Cierra tus respuestas guiando al usuario con una llamada a la acción clara.`;
+5. PROCESO DE ACTIVACIÓN:
+- El cliente solo realiza el abono por Yape, Plin o Binance y envía la captura de su voucher directamente a este chat de Telegram.
+- En breves momentos se le entrega su enlace privado de acceso VIP de 1 solo uso.
+
+REGLAS DE FORMATO:
+- Usa formato HTML compatible con Telegram (<b>negrita</b>, <i>cursiva</i>, <code>código</code>).
+- Cierra tus respuestas de forma natural con una invitación a elegir su plan o realizar su abono.`;
 
 interface TelegramButton {
   text: string;
@@ -900,25 +896,24 @@ const KEYBOARDS: Record<string, TelegramReplyMarkup> = {
     inline_keyboard: [
       [{ text: "👑 Ver Planes y Precios VIP", callback_data: "menu_plans" }],
       [{ text: "💳 Pagar con Yape / Plin / Binance", callback_data: "menu_payment" }],
-      [{ text: "📊 Ver Estadísticas y Rentabilidad", callback_data: "menu_stats" }],
-      [{ text: "💬 Contactar con Administrador", url: "https://t.me/brayyusman" }]
+      [
+        { text: "📊 Ver Estadísticas y Rendimiento", callback_data: "menu_stats" },
+        { text: "❓ ¿Cómo funciona?", callback_data: "menu_help" }
+      ]
     ]
   },
   plans: {
     inline_keyboard: [
-      [{ text: "💳 Ver Cuentas de Pago (Yape / Plin)", callback_data: "menu_payment" }],
-      [{ text: "💬 Contactar a Soporte (@brayyusman)", url: "https://t.me/brayyusman" }],
+      [{ text: "💳 Ver Cuentas de Pago (Yape / Plin / Binance)", callback_data: "menu_payment" }],
       [{ text: "🔙 Menú Principal", callback_data: "menu_start" }]
     ]
   },
   payment: {
     inline_keyboard: [
       [{ text: "👑 Ver Planes VIP", callback_data: "menu_plans" }],
-      [{ text: "💬 Contactar a Soporte (@brayyusman)", url: "https://t.me/brayyusman" }],
       [{ text: "🔙 Menú Principal", callback_data: "menu_start" }]
     ]
   },
-
   stats: {
     inline_keyboard: [
       [
@@ -1106,43 +1101,44 @@ async function answerRawCallbackQuery(callbackQueryId: string, text?: string, bo
 
 // Generate smart answer with proprietary neural engine
 async function generateSmartAgentResponse(userQuery: string, userName = "Amigo") {
+  // 1. Prioritize Google Gemini 3.7 Flash AI with the Master Sales Support Prompt
   if (ai) {
     try {
       const response = await ai.models.generateContent({
         model: "gemini-3.7-flash",
-        contents: `Consulta del usuario (${userName}): "${userQuery}"`,
+        contents: `Consulta del cliente (${userName}): "${userQuery}"`,
         config: {
           systemInstruction: SYSTEM_PROMPT_SALES_SUPPORT,
-          temperature: 0.3
+          temperature: 0.35
         }
       });
-      if (response.text) {
+      if (response.text && response.text.trim().length > 0) {
         return response.text;
       }
     } catch (e) {
-      console.warn("Agent response fallback to local heuristic rules:", e);
+      console.warn("AI generation fallback to conversational rules:", e);
     }
   }
 
-  // Local fallback response logic
+  // 2. High-quality conversational fallback
   const q = userQuery.toLowerCase();
-  if (q.includes("casa") || q.includes("donde") || q.includes("operador")) {
-    return `🎯 <b>¡Nuestras jugadas funcionan en TODAS las casas de apuestas!</b>\n\nNuestras señales identifican valor esperado positivo (+EV > +8%) a nivel de mercado general, por lo que puedes realizar tus apuestas en cualquier operador de tu preferencia indicando la cuota mínima recomendada para asegurar tu ventaja matemática.`;
+  if (q.includes("casa") || q.includes("donde") || q.includes("operador") || q.includes("betano") || q.includes("bet365") || q.includes("inkabet")) {
+    return `🎯 <b>¡Nuestras jugadas funcionan en TODAS las casas de apuestas!</b>\n\nNuestras señales identifican ventaja matemática (+EV > +8%) a nivel global. Puedes apostar en <b>Betano, Bet365, Apuesta Total, Inkabet, Doradobet, 1xBet o cualquier casa</b> de tu preferencia asegurando la cuota mínima recomendada.`;
   }
-  if (q.includes("banca") || q.includes("kelly") || q.includes("stake") || q.includes("gestion")) {
-    return `🏦 <b>Gestión de Banca con Criterio Kelly Fraccional (0.25x):</b>\n\nEn <b>FIJAS IA</b> protegemos tu capital asignando el stake según la ventaja matemática:\n\n• <b>1.0 Unidad:</b> Confianza Moderada (+5% a +8% Edge)\n• <b>1.5 Unidades:</b> Confianza Media-Alta (+8% a +12% Edge)\n• <b>2.0 Unidades:</b> Confianza Máxima (+12%+ Edge)\n\n📌 <i>Recomendación:</i> Define tu unidad entre el 2% y 5% de tu bankroll total (ej: S/ 50 en banca de S/ 1,000).`;
+  if (q.includes("banca") || q.includes("kelly") || q.includes("stake") || q.includes("gestion") || q.includes("gestión")) {
+    return `🏦 <b>Gestión de Banca con Criterio de Kelly Fraccional (0.25x):</b>\n\nEn <b>FIJAS IA</b> protegemos tu capital asignando el stake según la ventaja matemática:\n\n• <b>1.0 Unidad:</b> Confianza Moderada (+5% a +8% Edge)\n• <b>1.5 Unidades:</b> Confianza Media-Alta (+8% a +12% Edge)\n• <b>2.0 Unidades:</b> Confianza Máxima (+12%+ Edge)\n\n📌 <i>Recomendación:</i> Define tu unidad entre el 2% y 5% de tu capital total (ej: S/ 50 en banca de S/ 1,000).`;
   }
-  if (q.includes("acierto") || q.includes("winrate") || q.includes("ganar") || q.includes("rentab")) {
+  if (q.includes("acierto") || q.includes("winrate") || q.includes("ganar") || q.includes("rentab") || q.includes("estadistic")) {
     return MESSAGES.stats;
   }
-  if (q.includes("precio") || q.includes("plan") || q.includes("costo") || q.includes("cuanto") || q.includes("vip")) {
+  if (q.includes("precio") || q.includes("plan") || q.includes("costo") || q.includes("cuanto") || q.includes("cuánto") || q.includes("vip")) {
     return MESSAGES.plans;
   }
-  if (q.includes("pago") || q.includes("yape") || q.includes("plin") || q.includes("binance") || q.includes("comprobante")) {
+  if (q.includes("pago") || q.includes("yape") || q.includes("plin") || q.includes("binance") || q.includes("comprobante") || q.includes("cuenta")) {
     return MESSAGES.payment;
   }
 
-  return MESSAGES.start(userName);
+  return `👋 <b>¡Hola, ${userName}!</b>\n\nSoy tu asesor cuantitativo de <b>FIJAS IA</b>. Estoy aquí para responder cualquier pregunta sobre nuestras jugadas +EV, métodos de pago (Yape/Plin/Binance) o planes de membresía VIP.\n\n¿En qué te puedo asesorar hoy?`;
 }
 
 // 1. Direct Agent Chat Endpoint (Used by in-app Simulator and direct API)
