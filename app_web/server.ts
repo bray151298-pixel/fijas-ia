@@ -331,7 +331,8 @@ Devuelve un JSON estrictamente estructurado con las siguientes claves:
 const SIGNALS_BOT_TOKEN = process.env.TELEGRAM_SIGNALS_BOT_TOKEN || "8716300226:AAFtHuVEAaxtd1Cq0nMX0wTQsQpzkFkRsas";
 const SIGNALS_BOT_USERNAME = "@FijasIAOficial_bot";
 
-const SUPPORT_BOT_TOKEN = process.env.TELEGRAM_SUPPORT_BOT_TOKEN || "8651067640:AAEj5wcb4qlIHgm7BjGOdxkUF0ccMRi9LXU";
+const SUPPORT_BOT_TOKEN = process.env.TELEGRAM_SUPPORT_BOT_TOKEN || "8651067640:AAEYET4SaE2qE8vFCfyeZ0pql3vitdJaXH8";
+
 const SUPPORT_BOT_USERNAME = "@SoporteFijasIA_bot";
 
 const PUBLIC_CHANNEL = process.env.TELEGRAM_PUBLIC_CHANNEL || "@FijasIAOficial";
