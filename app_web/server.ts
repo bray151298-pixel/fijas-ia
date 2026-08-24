@@ -1785,33 +1785,7 @@ async function initializeTelegramBots() {
 async function runDualTelegramPollingLoop() {
   if (!isPollingActive) return;
 
-  // 1. Poll Signals Bot
-  try {
-    const urlSignals = `https://api.telegram.org/bot${SIGNALS_BOT_TOKEN}/getUpdates?offset=${signalsOffset}&timeout=5`;
-    const ctrl1 = new AbortController();
-    const t1 = setTimeout(() => ctrl1.abort(), 7000);
-    const resSignals = await fetch(urlSignals, { signal: ctrl1.signal });
-    clearTimeout(t1);
-
-    if (resSignals.ok) {
-      const data = await resSignals.json();
-      if (data.ok && Array.isArray(data.result) && data.result.length > 0) {
-        for (const update of data.result) {
-          signalsOffset = update.update_id + 1;
-          messagesHandledCount++;
-          console.log(`[SignalsBot] Update received:`, update.update_id);
-          await processBotUpdate(update, SIGNALS_BOT_TOKEN);
-        }
-      }
-    } else {
-      const errText = await resSignals.text();
-      console.warn(`[SignalsBot] Poll response status ${resSignals.status}:`, errText);
-    }
-  } catch (err) {
-    // ignore
-  }
-
-  // 2. Poll Support & Sales Bot
+  // Poll Support & Sales Bot (the interactive user-facing bot)
   try {
     const urlSupport = `https://api.telegram.org/bot${SUPPORT_BOT_TOKEN}/getUpdates?offset=${supportOffset}&timeout=5`;
     const ctrl2 = new AbortController();
@@ -1841,6 +1815,7 @@ async function runDualTelegramPollingLoop() {
     setTimeout(runDualTelegramPollingLoop, 1500);
   }
 }
+
 
 // Start polling background listeners after clearing webhooks
 initializeTelegramBots().then(() => {
