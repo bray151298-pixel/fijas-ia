@@ -287,17 +287,18 @@ def _resumen_ultimos(equipo_id: int, equipo_nombre: str) -> tuple[pd.DataFrame, 
     filas = []
     resumen_texto_lineas = []
     for p in partidos:
-        local_n = p["teams"]["home"]["name"]
-        visit_n = p["teams"]["away"]["name"]
-        gl = p["goals"]["home"]
-        gv = p["goals"]["away"]
+        local_n = p.get("teams", {}).get("home", {}).get("name", "Local")
+        visit_n = p.get("teams", {}).get("away", {}).get("name", "Visitante")
+        gl = p.get("goals", {}).get("home", 0)
+        gv = p.get("goals", {}).get("away", 0)
+        fecha_str = p.get("fixture", {}).get("date", "2026-08-20")[:10]
         es_local = local_n == equipo_nombre
         gf = gl if es_local else gv
         gc = gv if es_local else gl
         rival = visit_n if es_local else local_n
         filas.append(
             {
-                "Fecha": p["fixture"]["date"][:10],
+                "Fecha": fecha_str,
                 "Sitio": "Local" if es_local else "Visitante",
                 "Rival": rival,
                 "GF": gf,
@@ -306,10 +307,11 @@ def _resumen_ultimos(equipo_id: int, equipo_nombre: str) -> tuple[pd.DataFrame, 
             }
         )
         resumen_texto_lineas.append(
-            f"  - {p['fixture']['date'][:10]} vs {rival} "
+            f"  - {fecha_str} vs {rival} "
             f"({'Local' if es_local else 'Visitante'}): {gf}-{gc}"
         )
     return pd.DataFrame(filas), "\n".join(resumen_texto_lineas)
+
 
 
 col_l, col_v = st.columns(2)

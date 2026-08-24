@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 import logging
 from typing import Any
 import requests
@@ -154,9 +154,11 @@ def estadisticas_equipo(equipo_id: int, liga_id: int, temporada: int) -> dict:
 @st.cache_data(ttl=TTL_CORTO, show_spinner="Buscando ultimos 5 partidos...")
 def ultimos_partidos_equipo(equipo_id: int, cantidad: int = 5) -> list[dict]:
     return [
-        {"goals": {"home": 2, "away": 1}, "teams": {"home": {"name": "Local"}, "away": {"name": "Rival"}}},
-        {"goals": {"home": 1, "away": 1}, "teams": {"home": {"name": "Rival"}, "away": {"name": "Visita"}}},
+        {"fixture": {"date": "2026-08-20T18:00:00Z"}, "goals": {"home": 2, "away": 1}, "teams": {"home": {"name": "Local"}, "away": {"name": "Rival"}}},
+        {"fixture": {"date": "2026-08-16T16:00:00Z"}, "goals": {"home": 1, "away": 1}, "teams": {"home": {"name": "Rival"}, "away": {"name": "Visita"}}},
+        {"fixture": {"date": "2026-08-10T19:30:00Z"}, "goals": {"home": 3, "away": 0}, "teams": {"home": {"name": "Local"}, "away": {"name": "Rival"}}},
     ]
+
 
 @st.cache_data(ttl=TTL_MEDIO, show_spinner="Buscando enfrentamientos previos...")
 def head_to_head(equipo1_id: int, equipo2_id: int, cantidad: int = 10) -> list[dict]:
