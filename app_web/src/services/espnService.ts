@@ -58,65 +58,66 @@ export const ESPN_LEAGUE_ENDPOINTS = [
     name: 'Liga 1 Perú (Torneo Clausura)',
     sport: 'football' as const,
     sportEmoji: '⚽',
-    url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/per.1/scoreboard'
+    url: 'https://site.web.api.espn.com/apis/site/v2/sports/soccer/per.1/scoreboard'
   },
   {
     id: 'esp.1',
     name: 'La Liga EA Sports (España)',
     sport: 'football' as const,
     sportEmoji: '⚽',
-    url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/esp.1/scoreboard'
+    url: 'https://site.web.api.espn.com/apis/site/v2/sports/soccer/esp.1/scoreboard'
   },
   {
     id: 'ita.1',
     name: 'Serie A (Italia)',
     sport: 'football' as const,
     sportEmoji: '⚽',
-    url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/ita.1/scoreboard'
+    url: 'https://site.web.api.espn.com/apis/site/v2/sports/soccer/ita.1/scoreboard'
   },
   {
     id: 'eng.1',
     name: 'Premier League (Inglaterra)',
     sport: 'football' as const,
     sportEmoji: '⚽',
-    url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/scoreboard'
+    url: 'https://site.web.api.espn.com/apis/site/v2/sports/soccer/eng.1/scoreboard'
   },
   {
     id: 'ger.1',
     name: 'Bundesliga (Alemania)',
     sport: 'football' as const,
     sportEmoji: '⚽',
-    url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/ger.1/scoreboard'
+    url: 'https://site.web.api.espn.com/apis/site/v2/sports/soccer/ger.1/scoreboard'
   },
   {
     id: 'arg.1',
     name: 'Liga Profesional Argentina',
     sport: 'football' as const,
     sportEmoji: '⚽',
-    url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/arg.1/scoreboard'
+    url: 'https://site.web.api.espn.com/apis/site/v2/sports/soccer/arg.1/scoreboard'
   },
   {
     id: 'bra.1',
     name: 'Brasileirão Serie A',
     sport: 'football' as const,
     sportEmoji: '⚽',
-    url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/bra.1/scoreboard'
+    url: 'https://site.web.api.espn.com/apis/site/v2/sports/soccer/bra.1/scoreboard'
   },
   {
     id: 'mlb',
     name: 'MLB Grandes Ligas',
     sport: 'baseball' as const,
     sportEmoji: '⚾',
-    url: 'https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard'
+    url: 'https://site.web.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard'
   },
   {
     id: 'wnba',
     name: 'Básquetbol WNBA / NBA',
     sport: 'basketball' as const,
     sportEmoji: '🏀',
-    url: 'https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/scoreboard'
+    url: 'https://site.web.api.espn.com/apis/site/v2/sports/basketball/wnba/scoreboard'
   }
 ];
+
 
 /**
  * Convierte cualquier fecha ISO al huso horario de Lima (America/Lima UTC-5)
@@ -364,11 +365,13 @@ export async function fetchLiveESPNFutureMatches(): Promise<{
 
       const response = await fetch(endpoint.url, {
         headers: {
-          'Accept': 'application/json',
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) FijasIA/3.0'
+          'Accept': 'application/json, text/plain, */*',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Referer': 'https://www.espn.com/'
         },
         signal: controller.signal
       });
+
       clearTimeout(timeoutId);
 
       if (!response.ok) continue;
