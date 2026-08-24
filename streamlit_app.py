@@ -23,36 +23,7 @@ from analisis import poisson, value_betting
 from datos import football_api as api
 from ia import gemini_analyzer
 
-# -------------------- SEGURIDAD: LOGIN ADMINISTRATIVO ----------------------
-def check_admin_auth() -> bool:
-    """Verifica credenciales de Administrador para proteger el panel privado."""
-    admin_user = st.secrets.get("ADMIN_USER", "admin")
-    admin_pass = st.secrets.get("ADMIN_PASSWORD", "FijasIA2026*")
-
-    if "auth_ok" not in st.session_state:
-        st.session_state["auth_ok"] = False
-
-    if not st.session_state["auth_ok"]:
-        st.markdown("<h2 style='text-align: center; color: #10B981;'>🔒 FIJAS IA — Panel Administrativo Privado</h2>", unsafe_allow_html=True)
-        st.markdown("<p style='text-align: center; color: #94A3B8;'>Acceso restringido únicamente para el Administrador Cuantitativo.</p>", unsafe_allow_html=True)
-        
-        col1, col2, col3 = st.columns([1, 2, 1])
-        with col2:
-            with st.form("login_form"):
-                u = st.text_input("👤 Usuario Administrador", placeholder="admin")
-                p = st.text_input("🔑 Contraseña de Seguridad", type="password", placeholder="••••••••")
-                submitted = st.form_submit_button("🔓 Ingresar al Panel de Control", use_container_width=True)
-                if submitted:
-                    if u == admin_user and p == admin_pass:
-                        st.session_state["auth_ok"] = True
-                        st.rerun()
-                    else:
-                        st.error("❌ Credenciales incorrectas. Acceso denegado.")
-        return False
-    return True
-
-# -------------------- CONFIG GLOBAL DE STREAMLIT ----------------------
-
+# -------------------- CONFIG GLOBAL DE STREAMLIT (DEBE SER PRIMERO) ----------------------
 st.set_page_config(
     page_title="FIJAS IA — Panel Cuantitativo Maestro",
     page_icon="⚽",
@@ -60,8 +31,39 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# -------------------- SEGURIDAD: LOGIN ADMINISTRATIVO ----------------------
+def check_admin_auth() -> bool:
+    """Verifica credenciales de Administrador para proteger el panel privado."""
+    try:
+        admin_user = st.secrets.get("ADMIN_USER", "admin")
+        admin_pass = st.secrets.get("ADMIN_PASSWORD", "FijasIA2026*")
+    except Exception:
+        admin_user = "admin"
+        admin_pass = "FijasIA2026*"
+
+    if "auth_ok" not in st.session_state:
+        st.session_state["auth_ok"] = False
+
+    if not st.session_state["auth_ok"]:
+        st.header("🔒 FIJAS IA — Acceso Administrativo")
+        st.caption("Área restringida para el Administrador Cuantitativo.")
+        
+        with st.form("login_form"):
+            u = st.text_input("Usuario Administrador", placeholder="admin")
+            p = st.text_input("Contraseña de Seguridad", type="password", placeholder="••••••••")
+            submitted = st.form_submit_button("Ingresar al Panel de Control", use_container_width=True)
+            if submitted:
+                if u == admin_user and p == admin_pass:
+                    st.session_state["auth_ok"] = True
+                    st.rerun()
+                else:
+                    st.error("Credenciales incorrectas. Acceso denegado.")
+        return False
+    return True
+
 if not check_admin_auth():
     st.stop()
+
 
 
 # CSS extra para refinar el dark mode (el theme base ya viene de config.toml)
