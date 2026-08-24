@@ -880,6 +880,17 @@ interface TelegramReplyMarkup {
 }
 
 const KEYBOARDS: Record<string, TelegramReplyMarkup> = {
+  channel_funnel: {
+    inline_keyboard: [
+      [
+        { text: "👑 VER PLANES VIP", url: "https://t.me/SoporteFijasIA_bot?start=planes" },
+        { text: "💳 PAGAR (Yape/Plin)", url: "https://t.me/SoporteFijasIA_bot?start=pagar" }
+      ],
+      [
+        { text: "📩 ENVIAR COMPROBANTE DE PAGO", url: "https://t.me/SoporteFijasIA_bot?start=comprobante" }
+      ]
+    ]
+  },
   start: {
     inline_keyboard: [
       [{ text: "👑 Ver Planes y Precios VIP", callback_data: "menu_plans" }],
@@ -1836,8 +1847,24 @@ Una vez validado, recibirás de inmediato tu <b>enlace exclusivo de 1 solo uso</
         return;
       }
 
+      // Deeplink arguments handling (/start planes, /start pagar, /start comprobante)
+      if (lowerText.startsWith("/start planes")) {
+        await sendRawTelegramMessage(chatId, MESSAGES.plans, KEYBOARDS.plans, botToken);
+        return;
+      }
+      if (lowerText.startsWith("/start pagar")) {
+        await sendRawTelegramMessage(chatId, MESSAGES.payment, KEYBOARDS.payment, botToken);
+        return;
+      }
+      if (lowerText.startsWith("/start comprobante")) {
+        const askVoucher = `📸 <b>¡Hola, ${userName}! Envía tu comprobante de pago:</b>\n━━━━━━━━━━━━━━━━━━━━\nPor favor envía la foto o captura de tu abono por <b>Yape, Plin o Binance</b> directamente a este chat.\n\nNuestro sistema lo reenviará al Administrador (@brayyusman) para entregarte tu enlace de acceso VIP de inmediato.`;
+        await sendRawTelegramMessage(chatId, askVoucher, KEYBOARDS.payment, botToken);
+        return;
+      }
+
       // 3. Greetings & Start Menu
       const isGreeting = 
+        lowerText === "/start" || 
         lowerText.startsWith("/start") || 
         lowerText.startsWith("/menu") || 
         lowerText.startsWith("/ayuda") ||
@@ -4106,7 +4133,7 @@ app.post("/api/golden-parlay/settle", async (req, res) => {
 
     // Enviar celebración tanto al VIP como al Público para transparencia
     await sendRawTelegramMessage(currentVipChannel, celebrationMsg, undefined, SIGNALS_BOT_TOKEN);
-    const sendResPub = await sendRawTelegramMessage(currentPublicChannel, celebrationMsg, KEYBOARDS.start, SIGNALS_BOT_TOKEN);
+    const sendResPub = await sendRawTelegramMessage(currentPublicChannel, celebrationMsg, KEYBOARDS.channel_funnel, SIGNALS_BOT_TOKEN);
     telegramSent = sendResPub.ok;
     parlay.settlementMessage = celebrationMsg;
   }
@@ -4384,7 +4411,7 @@ async function runAutonomousSchedulerEngine() {
 🏦 <i>Bankroll auditado y sumado en vivo en la base de datos de FIJAS IA.</i>`;
 
         console.log(`[AutoPilot 24/7] Sending live settlement for ${ev.name}...`);
-        await sendRawTelegramMessage(PUBLIC_CHANNEL, settlementMsg, KEYBOARDS.start, SIGNALS_BOT_TOKEN);
+        await sendRawTelegramMessage(PUBLIC_CHANNEL, settlementMsg, KEYBOARDS.channel_funnel, SIGNALS_BOT_TOKEN);
         await sendRawTelegramMessage(VIP_CHANNEL_ID, settlementMsg, undefined, SIGNALS_BOT_TOKEN);
       }
     }
@@ -4410,7 +4437,7 @@ async function runAutonomousSchedulerEngine() {
 👉 Escribe a nuestro bot oficial: <a href="https://t.me/SoporteFijasIA_bot">@SoporteFijasIA_bot</a>
 💳 <i>Yape / Plin / Binance activos 24/7 con acceso inmediato.</i>`;
 
-      await sendRawTelegramMessage(PUBLIC_CHANNEL, freePickMsg, KEYBOARDS.start, SIGNALS_BOT_TOKEN);
+      await sendRawTelegramMessage(PUBLIC_CHANNEL, freePickMsg, KEYBOARDS.channel_funnel, SIGNALS_BOT_TOKEN);
 
       const vipBroadcastMsg = `👑 <b>CARTELERA OFICIAL DE PICKS VIP +EV — ${todayStr}</b>
 🤖 <b>Motor Cuantitativo Neural FIJAS IA v4.2</b>
@@ -4452,7 +4479,7 @@ async function runAutonomousSchedulerEngine() {
 ━━━━━━━━━━━━━━━━━━━━━
 🏦 <i>Transparencia total auditada por el Motor Cuantitativo FIJAS IA.</i>`;
 
-      await sendRawTelegramMessage(PUBLIC_CHANNEL, auditMsg, KEYBOARDS.start, SIGNALS_BOT_TOKEN);
+      await sendRawTelegramMessage(PUBLIC_CHANNEL, auditMsg, KEYBOARDS.channel_funnel, SIGNALS_BOT_TOKEN);
       await sendRawTelegramMessage(VIP_CHANNEL_ID, auditMsg, undefined, SIGNALS_BOT_TOKEN);
     }
   } catch (err) {
