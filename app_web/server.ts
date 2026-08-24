@@ -1680,6 +1680,27 @@ async function processBotUpdate(update: any, botToken: string) {
       }
       await answerRawCallbackQuery(cb.id, undefined, botToken);
       if (chatId) {
+        if (cbData && cbData.startsWith("admin_approve_")) {
+          const targetChatId = cbData.replace("admin_approve_", "");
+          const welcomeMsg = `🎉 <b>¡PAGO VERIFICADO Y APROBADO CON ÉXITO!</b>\n━━━━━━━━━━━━━━━━━━━━\n👑 <b>¡Bienvenido al Canal VIP Oficial de FIJAS IA!</b>\n\nTu suscripción ha sido confirmada por el Administrador.\n👉 <b>Haz clic en el enlace para unirte:</b>\n<a href="${VIP_CHANNEL_INVITE_LINK}">${VIP_CHANNEL_INVITE_LINK}</a>\n\n<i>¡Muchos éxitos y excelentes ganancias!</i>`;
+          const userKb = {
+            inline_keyboard: [
+              [{ text: "👑 UNIRSE AL CANAL VIP AHORA", url: VIP_CHANNEL_INVITE_LINK }]
+            ]
+          };
+          await sendRawTelegramMessage(targetChatId, welcomeMsg, userKb, botToken);
+          await sendRawTelegramMessage(chatId, `✅ <b>COMPROBANTE APROBADO:</b> Se ha entregado el enlace de acceso VIP al usuario (ID: <code>${targetChatId}</code>).`, undefined, botToken);
+          return;
+        }
+        
+        if (cbData && cbData.startsWith("admin_reject_")) {
+          const targetChatId = cbData.replace("admin_reject_", "");
+          const rejectMsg = `❌ <b>COMPROBANTE NO VÁLIDO O NO ENCONTRADO</b>\n━━━━━━━━━━━━━━━━━━━━\nTu comprobante fue revisado por el Administrador y no se encontró el abono en nuestras cuentas oficiales.\n\n📌 <b>Cuentas Oficiales de FIJAS IA:</b>\n• Yape / Plin: <code>901326470</code> (BRAY YUSMAN QUISPE ATAO)\n• Binance Pay: <code>849201948</code>\n\nPor favor envía una captura clara donde se observe el monto exacto, la fecha y el número de operación.`;
+          await sendRawTelegramMessage(targetChatId, rejectMsg, KEYBOARDS.payment, botToken);
+          await sendRawTelegramMessage(chatId, `❌ <b>COMPROBANTE RECHAZADO:</b> Se notificó al usuario (ID: <code>${targetChatId}</code>).`, undefined, botToken);
+          return;
+        }
+
         if (cbData === "menu_plans") await sendRawTelegramMessage(chatId, MESSAGES.plans, KEYBOARDS.plans, botToken);
         else if (cbData === "menu_payment") await sendRawTelegramMessage(chatId, MESSAGES.payment, KEYBOARDS.payment, botToken);
         else if (cbData === "menu_stats") await sendRawTelegramMessage(chatId, MESSAGES.stats, KEYBOARDS.stats, botToken);
@@ -1737,14 +1758,15 @@ Ingresa este código en el panel de recuperación del sistema web para restablec
         return;
       }
 
-      // 1. AI Voucher Verification (Photo / Document sent to bot)
+      // 1. Voucher Receipt Flow (Photo / Document sent to bot)
       if (isPhoto || isDoc) {
-        await sendRawTelegramMessage(chatId, `🔍 <b>Comprobante recibido. Analizando con Visión Neural...</b>\n⏳ <i>Verificando monto, número de operación y cuenta beneficiaria...</i>`, undefined, botToken);
+        // A. Confirm receipt to client immediately
+        const clientReceiptMsg = `📩 <b>¡Comprobante recibido con éxito!</b>\n━━━━━━━━━━━━━━━━━━━━\nTu comprobante ha sido registrado y enviado al <b>Administrador (@brayyusman)</b> para su validación inmediata.\n\n⏳ <i>En breves momentos recibirás tu enlace privado de acceso al Canal VIP.</i>`;
+        await sendRawTelegramMessage(chatId, clientReceiptMsg, undefined, botToken);
 
+        // B. Forward to Admin Bray (5261686165) with 1-Click Approve / Reject Buttons
         try {
-          let base64Image = "";
           let fileId = "";
-
           if (isPhoto) {
             const largestPhoto = msg.photo[msg.photo.length - 1];
             fileId = largestPhoto.file_id;
@@ -1752,93 +1774,48 @@ Ingresa este código en el panel de recuperación del sistema web para restablec
             fileId = msg.document.file_id;
           }
 
-          if (fileId) {
-            const fileInfoRes = await fetch(`https://api.telegram.org/bot${botToken}/getFile?file_id=${fileId}`);
-            const fileInfo = await fileInfoRes.json();
+          const adminCaption = `🚨 <b>NUEVO COMPROBANTE DE PAGO RECIBIDO — FIJAS IA</b>\n━━━━━━━━━━━━━━━━━━━━\n👤 <b>Cliente:</b> <b>${userName}</b> (${userHandle || 'Sin username'})\n🆔 <b>ID Telegram:</b> <code>${chatId}</code>\n📅 <b>Fecha:</b> ${new Date().toLocaleString('es-PE', { timeZone: 'America/Lima' })}\n📝 <b>Mensaje:</b> <i>${text || 'Sin texto'}</i>\n\n👇 <b>Selecciona una acción:</b>`;
 
-            if (fileInfo.ok && fileInfo.result?.file_path) {
-              const filePath = fileInfo.result.file_path;
-              const fileUrl = `https://api.telegram.org/file/bot${botToken}/${filePath}`;
-              const imgRes = await fetch(fileUrl);
-              const arrayBuffer = await imgRes.arrayBuffer();
-              base64Image = Buffer.from(arrayBuffer).toString("base64");
-            }
-          }
+          const adminButtons = {
+            inline_keyboard: [
+              [{ text: "✅ APROBAR Y ENVIAR ENLACE VIP", callback_data: `admin_approve_${chatId}` }],
+              [{ text: "❌ RECHAZAR PAGO", callback_data: `admin_reject_${chatId}` }]
+            ]
+          };
 
-          // Verify with AI Voucher Engine
-          const verification = await verifyVoucherWithAI(base64Image, "image/jpeg", text);
-
-          if (verification.isValid) {
-            const linkResult = await createTelegramInviteLink(VIP_CHANNEL_ID, userName, verification.planName, 1, SUPPORT_BOT_TOKEN);
-            const inviteLink = linkResult.invite_link || VIP_CHANNEL_INVITE_LINK;
-
-            const now = Date.now();
-            const durationDays = verification.planDurationDays || 30;
-            const expiryDate = new Date(now + durationDays * 86400000).toISOString();
-
-            const newSubscriber: StoredVIPSubscriber = {
-              id: `sub-${Date.now()}`,
-              name: userName,
-              username: userHandle,
-              chatId: chatId,
-              planName: verification.planName,
-              planId: verification.planId,
-              planDurationDays: durationDays,
-              amountPaid: verification.amount,
-              currency: verification.currency,
-              operationNumber: verification.operationNumber,
-              paymentMethod: verification.paymentMethod as any,
-              startDate: new Date(now).toISOString(),
-              expiryDate: expiryDate,
-              status: "active",
-              inviteLink: inviteLink,
-              verifiedByAI: true,
-              aiConfidenceScore: verification.confidenceScore,
-              createdAt: new Date(now).toISOString(),
-              notes: `Auto-verificado por Motor Neural (${verification.paymentMethod} ${verification.currency} ${verification.amount}). Op: ${verification.operationNumber}`
-            };
-
-            crmSubscribersRegistry.unshift(newSubscriber);
-
-            const deliveryMsg = formatVipWelcomeDeliveryMessage(
-              userName,
-              verification.planName,
-              inviteLink,
-              durationDays,
-              new Date(expiryDate).toLocaleDateString("es-PE"),
-              verification.amount,
-              verification.operationNumber
-            );
-
-            const actionKeyboard = {
-              inline_keyboard: [
-                [{ text: "👑 Ingresar al Canal VIP (1 Solo Uso)", url: inviteLink }],
-                [{ text: "📩 Soporte Directo", url: `https://t.me/${SUPPORT_BOT_USERNAME.replace('@', '')}` }],
-                [{ text: "🔙 Menú Principal", callback_data: "menu_start" }]
-              ]
-            };
-
-            await sendRawTelegramMessage(chatId, deliveryMsg, actionKeyboard, botToken);
-            return;
+          if (fileId && isPhoto) {
+            await fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                chat_id: ADMIN_TELEGRAM_ID,
+                photo: fileId,
+                caption: adminCaption,
+                parse_mode: 'HTML',
+                reply_markup: adminButtons
+              })
+            });
+          } else if (fileId && isDoc) {
+            await fetch(`https://api.telegram.org/bot${botToken}/sendDocument`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                chat_id: ADMIN_TELEGRAM_ID,
+                document: fileId,
+                caption: adminCaption,
+                parse_mode: 'HTML',
+                reply_markup: adminButtons
+              })
+            });
           } else {
-            const rejectMsg = `⚠️ <b>No pudimos validar automáticamente el comprobante</b>
-━━━━━━━━━━━━━━━━━━━━
-Motivo: ${verification.rejectionReason || "Los datos de la imagen no coinciden con nuestras cuentas oficiales o no son legibles."}
-
-📌 <b>Cuentas Oficiales de FIJAS IA:</b>
-• Yape / Plin: <code>${PAYMENT_INFO.yape.number}</code> (Titular: <b>${PAYMENT_INFO.yape.holder}</b>)
-• Binance Pay: <code>${PAYMENT_INFO.binancePayId}</code>
-
-Por favor, envía una captura clara donde se observe el monto exacto, la fecha y el número de operación, o escribe a soporte.`;
-
-            await sendRawTelegramMessage(chatId, rejectMsg, KEYBOARDS.payment, botToken);
-            return;
+            await sendRawTelegramMessage(ADMIN_TELEGRAM_ID, adminCaption, adminButtons, botToken);
           }
-        } catch (err) {
-          console.error("Error verifying voucher via Telegram photo:", err);
+          console.log(`[SupportBot] Voucher forwarded to Admin (${ADMIN_TELEGRAM_ID}) from user ${chatId}`);
+        } catch (fwdErr) {
+          console.error("Error forwarding voucher to admin:", fwdErr);
         }
+        return;
       }
-
       // 2. Detection of text receipt keywords without attached image
       const receiptKeywords = ["comprobante", "constancia", "voucher", "yape", "plin", "transferencia", "adjunto", "pague", "pagué", "abono", "deposito", "depósito", "op:"];
       const isReceiptQuery = receiptKeywords.some(k => lowerText.includes(k));
