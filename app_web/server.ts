@@ -1574,7 +1574,67 @@ app.post("/api/telegram/broadcast-by-sport", async (req, res) => {
 1️⃣ 🇪🇸 <b>Carlos Alcaraz vs Jannik Sinner</b> 🇮🇹 (ATP Masters 1000)
 • ⏰ <b>Hora:</b> Hoy 16:00 (4:00 p.m. Lima) | 🏟️ <i>Arthur Ashe Stadium (Pista Rápida)</i>
 • 👉 <b>Pronóstico:</b> <b>Carlos Alcaraz Ganador (ML) o Más de 22.5 Juegos</b>
-• 📈 <b>Cuota:</b> <b>@1.72 (ML) / @1.95 (Over)</b> | 🎯 <b>Probabilidad Modelo:</b> <b>58.1%</b> | 🧠 <b>Edge:</b> <b>+13.3  if (update.callback_query) {
+• 📈 <b>Cuota:</b> <b>@1.72 (ML) / @1.95 (Over)</b> | 🎯 <b>Probabilidad Modelo:</b> <b>58.1%</b> | 🧠 <b>Edge:</b> <b>+13.3%</b>
+• 💰 <b>Stake:</b> <b>1.5 Unidades</b>
+• 🔍 <b>Análisis Cuantitativo:</b> 68.5% de primeros saques y 44% de conversión de quiebres. Promedio de 24.6 juegos en sus últimos enfrentamientos directos.
+
+👑 <i>Canal VIP Exclusivo & Soporte: <a href="https://t.me/SoporteFijasIA_bot">@SoporteFijasIA_bot</a></i>`
+    },
+    mma: {
+      title: "🥊 UFC / Artes Marciales Mixtas — VIP",
+      text: `👑 <b>PRONÓSTICO DESTACADO VIP — UFC CAMPEONATO</b>
+📅 <b>Jornada:</b> ${todayCapitalized} · 🤖 <b>Filtro Cuantitativo VIP:</b> Defensa de Derribo & Asaltos
+
+━━━━━━━━━━━━━━━━━━━━━
+1️⃣ <b>Islam Makhachev vs Arman Tsarukyan</b> (UFC Peso Ligero)
+• ⏰ <b>Hora:</b> Hoy 22:30 (10:30 p.m. Lima) | 🏟️ <i>T-Mobile Arena, Las Vegas</i>
+• 👉 <b>Pronóstico:</b> <b>Más de 2.5 Asaltos (Pasa al Round 3)</b>
+• 📈 <b>Cuota:</b> <b>@1.78</b> | 🎯 <b>Probabilidad Modelo:</b> <b>63.3%</b> | 🧠 <b>Edge:</b> <b>+12.6%</b>
+• 💰 <b>Stake:</b> <b>2.0 Unidades</b>
+• 🔍 <b>Análisis Cuantitativo:</b> Ambos peleadores registran defensas de derribo superiores al 85% y gran nivel de lucha olímpica, lo que neutraliza finalizaciones tempranas.
+
+👑 <i>Canal VIP Exclusivo & Soporte: <a href="https://t.me/SoporteFijasIA_bot">@SoporteFijasIA_bot</a></i>`
+    }
+  };
+
+  const results: any[] = [];
+
+  if (sport && sport !== "all" && sportMessages[sport]) {
+    const item = sportMessages[sport];
+    const resSend = await sendRawTelegramMessage(chat, item.text, mode === "public" ? KEYBOARDS.start : undefined, SIGNALS_BOT_TOKEN);
+    results.push({ sport, title: item.title, targetChat: chat, channelType: mode, success: resSend.ok, resSend });
+  } else {
+    // Send all sports sequentially with a slight delay
+    const sportKeys = ["football", "basketball", "tennis", "mma"];
+    for (const key of sportKeys) {
+      const item = (sportMessages as any)[key];
+      if (item) {
+        const resSend = await sendRawTelegramMessage(chat, item.text, mode === "public" ? KEYBOARDS.start : undefined, SIGNALS_BOT_TOKEN);
+        results.push({ sport: key, title: item.title, targetChat: chat, channelType: mode, success: resSend.ok, resSend });
+        await new Promise((r) => setTimeout(r, 600));
+      }
+    }
+  }
+
+  res.json({
+    ok: results.every(r => r.success),
+    chat,
+    channelType: mode,
+    broadcastedCount: results.length,
+    results
+  });
+});
+
+// 5. Dual Polling Engine State for Both Bots
+let isPollingActive = true;
+let signalsOffset = 0;
+let supportOffset = 0;
+let messagesHandledCount = 18;
+
+async function processBotUpdate(update: any, botToken: string) {
+  if (!update) return;
+
+  if (update.callback_query) {
     const cb = update.callback_query;
     const chatId = cb.message?.chat?.id;
     const cbData = cb.data || "";
