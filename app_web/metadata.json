@@ -1,0 +1,6 @@
+{
+  "name": "TIPSTER IA - Inteligencia Deportiva Cuantitativa",
+  "description": "Plataforma SaaS profesional de análisis cuantitativo +EV multi-deporte con Ciclo Maestro de 4 Etapas, Módulo Dual (Análisis Continuo Pre-Partido y Escáner Live In-Play +EV > 12%), Combinada de Oro VIP y Gestión Kelly.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
