@@ -1573,72 +1573,43 @@ app.post("/api/telegram/broadcast-by-sport", async (req, res) => {
 1️⃣ 🇪🇸 <b>Carlos Alcaraz vs Jannik Sinner</b> 🇮🇹 (ATP Masters 1000)
 • ⏰ <b>Hora:</b> Hoy 16:00 (4:00 p.m. Lima) | 🏟️ <i>Arthur Ashe Stadium (Pista Rápida)</i>
 • 👉 <b>Pronóstico:</b> <b>Carlos Alcaraz Ganador (ML) o Más de 22.5 Juegos</b>
-• 📈 <b>Cuota:</b> <b>@1.72 (ML) / @1.95 (Over)</b> | 🎯 <b>Probabilidad Modelo:</b> <b>58.1%</b> | 🧠 <b>Edge:</b> <b>+13.3%</b>
-• 💰 <b>Stake:</b> <b>1.5 Unidades</b>
-• 🔍 <b>Análisis Cuantitativo:</b> 68.5% de primeros saques y 44% de conversión de quiebres. Promedio de 24.6 juegos en sus últimos enfrentamientos directos.
-
-👑 <i>Canal VIP Exclusivo & Soporte: <a href="https://t.me/SoporteFijasIA_bot">@SoporteFijasIA_bot</a></i>`
-    },
-    mma: {
-      title: "🥊 UFC / Artes Marciales Mixtas — VIP",
-      text: `👑 <b>PRONÓSTICO DESTACADO VIP — UFC CAMPEONATO</b>
-📅 <b>Jornada:</b> ${todayCapitalized} · 🤖 <b>Filtro Cuantitativo VIP:</b> Defensa de Derribo & Asaltos
-
-━━━━━━━━━━━━━━━━━━━━━
-1️⃣ <b>Islam Makhachev vs Arman Tsarukyan</b> (UFC Peso Ligero)
-• ⏰ <b>Hora:</b> Hoy 22:30 (10:30 p.m. Lima) | 🏟️ <i>T-Mobile Arena, Las Vegas</i>
-• 👉 <b>Pronóstico:</b> <b>Más de 2.5 Asaltos (Pasa al Round 3)</b>
-• 📈 <b>Cuota:</b> <b>@1.78</b> | 🎯 <b>Probabilidad Modelo:</b> <b>63.3%</b> | 🧠 <b>Edge:</b> <b>+12.6%</b>
-• 💰 <b>Stake:</b> <b>2.0 Unidades</b>
-• 🔍 <b>Análisis Cuantitativo:</b> Ambos peleadores registran defensas de derribo superiores al 85% y gran nivel de lucha olímpica, lo que neutraliza finalizaciones tempranas.
-
-👑 <i>Canal VIP Exclusivo & Soporte: <a href="https://t.me/SoporteFijasIA_bot">@SoporteFijasIA_bot</a></i>`
-    }
-  };
-
-  const results: any[] = [];
-
-  if (sport && sport !== "all" && sportMessages[sport]) {
-    const item = sportMessages[sport];
-    const resSend = await sendRawTelegramMessage(chat, item.text, mode === "public" ? KEYBOARDS.start : undefined, SIGNALS_BOT_TOKEN);
-    results.push({ sport, title: item.title, targetChat: chat, channelType: mode, success: resSend.ok, resSend });
-  } else {
-    // Send all sports sequentially with a slight delay
-    const sportKeys = ["football", "basketball", "tennis", "baseball", "mma"];
-    for (const key of sportKeys) {
-      const item = sportMessages[key];
-      if (item) {
-        const resSend = await sendRawTelegramMessage(chat, item.text, mode === "public" ? KEYBOARDS.start : undefined, SIGNALS_BOT_TOKEN);
-        results.push({ sport: key, title: item.title, targetChat: chat, channelType: mode, success: resSend.ok, resSend });
-        // slight delay
-        await new Promise((r) => setTimeout(r, 600));
-      }
-    }
-  }
-
-  res.json({
-    ok: results.every(r => r.success),
-    chat,
-    channelType: mode,
-    broadcastedCount: results.length,
-    results
-  });
-});
-
-// 5. Dual Polling Engine State for Both Bots
-let isPollingActive = true;
-let signalsOffset = 0;
-let supportOffset = 0;
-let messagesHandledCount = 18;
-
-async function processBotUpdate(update: any, botToken: string) {
-  if (!update) return;
-
-  if (update.callback_query) {
+• 📈 <b>Cuota:</b> <b>@1.72 (ML) / @1.95 (Over)</b> | 🎯 <b>Probabilidad Modelo:</b> <b>58.1%</b> | 🧠 <b>Edge:</b> <b>+13.3  if (update.callback_query) {
     const cb = update.callback_query;
     const chatId = cb.message?.chat?.id;
-    const cbData = cb.data;
+    const cbData = cb.data || "";
     await answerRawCallbackQuery(cb.id, undefined, botToken);
+
+    // Admin 1-Click Approval Actions
+    if (cbData.startsWith("approve_")) {
+      const parts = cbData.split("_");
+      const targetChatId = parts[1];
+      const targetUser = parts[2] || "Suscriptor VIP";
+      
+      const linkResult = await createTelegramInviteLink(VIP_CHANNEL_ID, targetUser, "Pase VIP Oficial", 1, SUPPORT_BOT_TOKEN);
+      const inviteLink = linkResult.invite_link || VIP_CHANNEL_INVITE_LINK;
+
+      const welcomeMsg = `🎉 <b>¡PAGO VERIFICADO CON ÉXITO! BIENVENIDO AL VIP</b> 👑🏆
+━━━━━━━━━━━━━━━━━━━━━
+Tu membresía ha sido validada y activada por el Administrador.
+
+👉 <b>Únete a tu Canal VIP Exclusivo aquí:</b>
+${inviteLink}
+
+⚠️ <b>Importante:</b> Este enlace es personal y de 1 solo uso. ¡Aprovéchalo al máximo y bienvenido al equipo!`;
+
+      await sendRawTelegramMessage(targetChatId, welcomeMsg, undefined, SUPPORT_BOT_TOKEN);
+      await sendRawTelegramMessage(ADMIN_TELEGRAM_ID, `✅ <b>Comprobante de @${targetUser} (ID: ${targetChatId}) APROBADO con éxito. Enlace VIP entregado.</b>`, undefined, SUPPORT_BOT_TOKEN);
+      return;
+    } else if (cbData.startsWith("reject_")) {
+      const parts = cbData.split("_");
+      const targetChatId = parts[1];
+      const targetUser = parts[2] || "Cliente";
+
+      await sendRawTelegramMessage(targetChatId, `❌ <b>COMPROBANTE NO PUDO SER VERIFICADO</b>\n\nPor favor verifica que la transferencia se haya realizado a nuestras cuentas oficiales o envía una captura clara de tu abono.`, KEYBOARDS.payment, SUPPORT_BOT_TOKEN);
+      await sendRawTelegramMessage(ADMIN_TELEGRAM_ID, `❌ <b>Pago de @${targetUser} (ID: ${targetChatId}) fue RECHAZADO.</b>`, undefined, SUPPORT_BOT_TOKEN);
+      return;
+    }
+
     if (chatId) {
       if (cbData === "menu_plans") await sendRawTelegramMessage(chatId, MESSAGES.plans, KEYBOARDS.plans, botToken);
       else if (cbData === "menu_payment") await sendRawTelegramMessage(chatId, MESSAGES.payment, KEYBOARDS.payment, botToken);
@@ -1655,110 +1626,51 @@ async function processBotUpdate(update: any, botToken: string) {
     const isPhoto = Boolean(msg.photo && msg.photo.length > 0);
     const isDoc = Boolean(msg.document);
 
-    // 1. AI Voucher Verification (Photo / Document sent to bot)
+    // 1. Voucher Processing: Forward to Bray with 1-Click Approval Buttons
     if (isPhoto || isDoc) {
-      await sendRawTelegramMessage(chatId, `🔍 <b>Comprobante recibido. Analizando con Visión Neural...</b>\n⏳ <i>Verificando monto, número de operación y cuenta beneficiaria...</i>`, undefined, botToken);
+      await sendRawTelegramMessage(chatId, `📩 <b>¡Comprobante de pago recibido!</b>\n\nTu abono está en proceso de validación por el Administrador. En unos instantes recibirás tu enlace de acceso exclusivo al Canal VIP.`, undefined, botToken);
 
       try {
-        let base64Image = "";
         let fileId = "";
-
         if (isPhoto) {
-          const largestPhoto = msg.photo[msg.photo.length - 1];
-          fileId = largestPhoto.file_id;
+          fileId = msg.photo[msg.photo.length - 1].file_id;
         } else if (isDoc && msg.document?.file_id) {
           fileId = msg.document.file_id;
         }
 
         if (fileId) {
-          // 1. Get file path from Telegram
-          const fileInfoRes = await fetch(`https://api.telegram.org/bot${botToken}/getFile?file_id=${fileId}`);
-          const fileInfo = await fileInfoRes.json();
+          const adminCaption = `🔔 <b>NUEVO COMPROBANTE DE PAGO RECIBIDO</b>
+━━━━━━━━━━━━━━━━━━━━━
+👤 <b>Cliente:</b> ${userName} (${userHandle || chatId})
+🆔 <b>Chat ID:</b> <code>${chatId}</code>
+📅 <b>Fecha:</b> Hoy ${new Date().toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit" })}
+━━━━━━━━━━━━━━━━━━━━━
+👇 <b>Presiona un botón para validar el acceso VIP:</b>`;
 
-          if (fileInfo.ok && fileInfo.result?.file_path) {
-            const filePath = fileInfo.result.file_path;
-            const fileUrl = `https://api.telegram.org/file/bot${botToken}/${filePath}`;
-            const imgRes = await fetch(fileUrl);
-            const arrayBuffer = await imgRes.arrayBuffer();
-            base64Image = Buffer.from(arrayBuffer).toString("base64");
-          }
-        }
-
-        // 2. Verify with AI Voucher Engine
-        const verification = await verifyVoucherWithAI(base64Image, "image/jpeg", text);
-
-        if (verification.isValid) {
-          // Auto-generate 1-use invite link
-          const linkResult = await createTelegramInviteLink(VIP_CHANNEL_ID, userName, verification.planName, 1, SUPPORT_BOT_TOKEN);
-          const inviteLink = linkResult.invite_link || VIP_CHANNEL_INVITE_LINK;
-
-          const now = Date.now();
-          const durationDays = verification.planDurationDays || 30;
-          const expiryDate = new Date(now + durationDays * 86400000).toISOString();
-
-          // Register in CRM
-          const newSubscriber: StoredVIPSubscriber = {
-            id: `sub-${Date.now()}`,
-            name: userName,
-            username: userHandle,
-            chatId: chatId,
-            planName: verification.planName,
-            planId: verification.planId,
-            planDurationDays: durationDays,
-            amountPaid: verification.amount,
-            currency: verification.currency,
-            operationNumber: verification.operationNumber,
-            paymentMethod: verification.paymentMethod as any,
-            startDate: new Date(now).toISOString(),
-            expiryDate: expiryDate,
-            status: "active",
-            inviteLink: inviteLink,
-            verifiedByAI: true,
-            aiConfidenceScore: verification.confidenceScore,
-            createdAt: new Date(now).toISOString(),
-            notes: `Auto-verificado por Motor Neural (${verification.paymentMethod} ${verification.currency} ${verification.amount}). Op: ${verification.operationNumber}`
-          };
-
-          crmSubscribersRegistry.unshift(newSubscriber);
-
-          const deliveryMsg = formatVipWelcomeDeliveryMessage(
-            userName,
-            verification.planName,
-            inviteLink,
-            durationDays,
-            new Date(expiryDate).toLocaleDateString("es-PE"),
-            verification.amount,
-            verification.operationNumber
-          );
-
-          const actionKeyboard = {
+          const adminButtons = {
             inline_keyboard: [
-              [{ text: "👑 Ingresar al Canal VIP (1 Solo Uso)", url: inviteLink }],
-              [{ text: "📩 Soporte Directo", url: `https://t.me/${SUPPORT_BOT_USERNAME.replace('@', '')}` }],
-              [{ text: "🔙 Menú Principal", callback_data: "menu_start" }]
+              [{ text: "✅ APROBAR Y ENVIAR ENLACE VIP", callback_data: `approve_${chatId}_${msg.from?.username || userName}` }],
+              [{ text: "❌ RECHAZAR PAGO", callback_data: `reject_${chatId}_${msg.from?.username || userName}` }]
             ]
           };
 
-          await sendRawTelegramMessage(chatId, deliveryMsg, actionKeyboard, botToken);
-          return;
-        } else {
-          // Verification failed or insufficient amount
-          const rejectMsg = `⚠️ <b>No pudimos validar automáticamente el comprobante</b>
-━━━━━━━━━━━━━━━━━━━━
-Motivo: ${verification.rejectionReason || "Los datos de la imagen no coinciden con nuestras cuentas oficiales o no son legibles."}
-
-📌 <b>Cuentas Oficiales de FIJAS IA:</b>
-• Yape / Plin: <code>${PAYMENT_INFO.yape.number}</code> (Titular: <b>${PAYMENT_INFO.yape.holder}</b>)
-• Binance Pay: <code>${PAYMENT_INFO.binancePayId}</code>
-
-Por favor, envía una captura clara donde se observe el monto exacto, la fecha y el número de operación, o escribe a soporte.`;
-
-          await sendRawTelegramMessage(chatId, rejectMsg, KEYBOARDS.payment, botToken);
-          return;
+          // Forward photo to Bray's Telegram ID
+          await fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              chat_id: ADMIN_TELEGRAM_ID,
+              photo: fileId,
+              caption: adminCaption,
+              parse_mode: "HTML",
+              reply_markup: adminButtons
+            })
+          });
         }
       } catch (err) {
-        console.error("Error verifying voucher via Telegram photo:", err);
+        console.error("Error forwarding voucher to admin:", err);
       }
+      return;
     }
 
     // 2. Detection of text receipt keywords without attached image
