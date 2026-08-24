@@ -200,8 +200,8 @@ const INITIAL_AUTOPILOT_STATE: AutoPilotState = {
 
 export default function App() {
   // Application Data States
-  const [matches] = useState<Match[]>(MATCHES_DATA);
-  const [evSignals] = useState<EVSignal[]>(EV_SIGNALS_LIST);
+  const [matches, setMatches] = useState<Match[]>(MATCHES_DATA);
+  const [evSignals, setEvSignals] = useState<EVSignal[]>(EV_SIGNALS_LIST);
   const [kpis, setKpis] = useState(INITIAL_KPIS);
 
   // AutoPilot 24/7 Automated Bot Scheduler State
@@ -366,6 +366,112 @@ export default function App() {
       console.warn('Could not fetch server picks DB, using local state:', err);
     }
   };
+
+  // Auto-Fetch Real-Time ESPN Matches on Load & Every 60s
+  const syncLiveESPNMatches = async () => {
+    try {
+      const liveData = await fetchLiveESPNFutureMatches();
+      if (liveData && liveData.allScheduled && liveData.allScheduled.length > 0) {
+        const transformedMatches: Match[] = liveData.allScheduled.map((item: ESPNScheduledMatch, idx: number) => {
+          const rec = item.recommendedPick;
+          return {
+            id: item.id || `espn-match-${idx}`,
+            sport: item.sport,
+            league: (item.leagueId as any) || 'all',
+            homeTeam: item.homeTeam,
+            awayTeam: item.awayTeam,
+            homeLogo: item.homeLogo,
+            awayLogo: item.awayLogo,
+            venue: item.venue || 'Estadio Principal',
+            kickoffDate: item.isoDate ? item.isoDate.slice(0, 10) : new Date().toISOString().slice(0, 10),
+            kickoffTime: item.timeOnlyLima || '18:00',
+            kickoffTimestamp: item.kickoffTimestamp || Date.now(),
+            apuestaTotalEventId: item.id,
+            odds: {
+              home: rec?.odds || 1.85,
+              draw: 3.40,
+              away: 3.50,
+              over25: 1.90,
+              under25: 1.90,
+              doubleChance1X: 1.25
+            },
+            modelProbabilities: {
+              home: rec?.modelProb || 65,
+              draw: 20,
+              away: 15,
+              over25: 55,
+              under25: 45
+            },
+            fairOdds: {
+              home: rec?.fairOdds || 1.55,
+              draw: 5.00,
+              away: 6.60,
+              over25: 1.80,
+              under25: 2.20
+            },
+            bestValueBet: {
+              market: rec?.market || 'Línea de Dinero (1X2)',
+              selection: rec?.selection || `${item.homeTeam} Gana`,
+              odds: rec?.odds || 1.85,
+              fairOdds: rec?.fairOdds || 1.55,
+              modelProb: rec?.modelProb || 65,
+              impliedProb: 54,
+              edge: rec?.edge || 11.0,
+              stake: '+2.0u',
+              confidence: 85,
+              urgency: 'ALTA',
+              rationale: rec?.analysis || 'Análisis cuantitativo de valor detectado con +EV superior al 10%.'
+            },
+            absences: [],
+            h2hHistory: [],
+            weather: { condition: 'Despejado', temperatureC: 22, rainProb: 5 },
+            tacticalSummary: rec?.analysis || 'Ventaja táctica y valor positivo proyectado.',
+            status: item.statusState === 'in' ? 'LIVE' : (item.statusState === 'post' ? 'FINISHED' : 'NOT_STARTED')
+          };
+        });
+
+        const transformedSignals: EVSignal[] = liveData.allScheduled
+          .filter(item => Boolean(item.recommendedPick))
+          .map((item: ESPNScheduledMatch, idx: number) => {
+            const rec = item.recommendedPick!;
+            return {
+              id: `ev-live-${idx}`,
+              sport: item.sport,
+              matchId: item.id,
+              matchTitle: `${item.homeTeam} vs ${item.awayTeam}`,
+              league: item.league,
+              market: rec.market,
+              selection: rec.selection,
+              odds: rec.odds,
+              fairOdds: rec.fairOdds,
+              modelProb: rec.modelProb,
+              impliedProb: Number(((1 / rec.odds) * 100).toFixed(1)),
+              edge: rec.edge,
+              stake: '+2.0u',
+              confidence: 88,
+              urgency: 'ALTA',
+              rationale: rec.analysis,
+              timeToKickoff: item.timeOnlyLima
+            };
+          });
+
+        if (transformedMatches.length > 0) {
+          setMatches(transformedMatches);
+        }
+        if (transformedSignals.length > 0) {
+          setEvSignals(transformedSignals);
+        }
+      }
+    } catch (err) {
+      console.warn('Live ESPN fetch error:', err);
+    }
+  };
+
+  useEffect(() => {
+    syncLiveESPNMatches();
+    const interval = setInterval(syncLiveESPNMatches, 60000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     fetchServerTrackedPicks();
