@@ -882,44 +882,32 @@ interface TelegramReplyMarkup {
 const KEYBOARDS: Record<string, TelegramReplyMarkup> = {
   channel_funnel: {
     inline_keyboard: [
-      [
-        { text: "👑 VER PLANES VIP", url: "https://t.me/SoporteFijasIA_bot?start=planes" },
-        { text: "💳 PAGAR (Yape/Plin)", url: "https://t.me/SoporteFijasIA_bot?start=pagar" }
-      ],
-      [
-        { text: "📩 ENVIAR COMPROBANTE DE PAGO", url: "https://t.me/SoporteFijasIA_bot?start=comprobante" }
-      ]
+      [{ text: "👑 VER PLANES VIP & ADQUIRIR ACCESO 📩", url: "https://t.me/SoporteFijasIA_bot?start=planes" }]
     ]
   },
   start: {
     inline_keyboard: [
       [{ text: "👑 Ver Planes y Precios VIP", callback_data: "menu_plans" }],
       [{ text: "💳 Pagar con Yape / Plin / Binance", callback_data: "menu_payment" }],
-      [
-        { text: "📊 Ver Estadísticas y Rentabilidad", callback_data: "menu_stats" },
-        { text: "❓ ¿Cómo funciona el Bot?", callback_data: "menu_help" }
-      ],
-      [{ text: "📩 Enviar Comprobante de Pago", url: "https://t.me/SoporteFijasIA_bot" }]
+      [{ text: "📊 Ver Estadísticas y Rentabilidad", callback_data: "menu_stats" }],
+      [{ text: "💬 Contactar con Administrador", url: "https://t.me/brayyusman" }]
     ]
   },
   plans: {
     inline_keyboard: [
-      [{ text: "💳 Ir a Pagar (Yape / Plin / Binance)", callback_data: "menu_payment" }],
-      [
-        { text: "📩 Hablar con Soporte Humano", url: "https://t.me/SoporteFijasIA_bot" },
-        { text: "🔙 Volver al Menú", callback_data: "menu_start" }
-      ]
+      [{ text: "💳 Ver Cuentas de Pago (Yape / Plin)", callback_data: "menu_payment" }],
+      [{ text: "💬 Contactar a Soporte (@brayyusman)", url: "https://t.me/brayyusman" }],
+      [{ text: "🔙 Menú Principal", callback_data: "menu_start" }]
     ]
   },
   payment: {
     inline_keyboard: [
-      [{ text: "📩 Enviar Comprobante a Soporte", url: "https://t.me/SoporteFijasIA_bot" }],
-      [
-        { text: "👑 Ver Planes VIP", callback_data: "menu_plans" },
-        { text: "🔙 Menú Principal", callback_data: "menu_start" }
-      ]
+      [{ text: "👑 Ver Planes VIP", callback_data: "menu_plans" }],
+      [{ text: "💬 Contactar a Soporte (@brayyusman)", url: "https://t.me/brayyusman" }],
+      [{ text: "🔙 Menú Principal", callback_data: "menu_start" }]
     ]
   },
+
   stats: {
     inline_keyboard: [
       [
