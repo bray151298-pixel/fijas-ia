@@ -328,22 +328,12 @@ Devuelve un JSON estrictamente estructurado con las siguientes claves:
 // TELEGRAM SALES & SUPPORT VIP AGENT (GEMINI 3.7) & AUTO-PILOT
 // ==========================================
 
-const CANDIDATE_SIGNALS_TOKENS = [
-  process.env.TELEGRAM_SIGNALS_BOT_TOKEN,
-  process.env.TELEGRAM_BOT_TOKEN,
-  "8716300226:AAFtHuVEAaxtd1Cq0nMX0wTQsQpzkFkRsas"
-].filter(Boolean) as string[];
-
-const CANDIDATE_SUPPORT_TOKENS = [
-  process.env.TELEGRAM_SUPPORT_BOT_TOKEN,
-  "8651067640:AAEYET4SaE2qE8vFCfyeZ0pql3vitdJaXH8"
-].filter(Boolean) as string[];
-
-let SIGNALS_BOT_TOKEN = CANDIDATE_SIGNALS_TOKENS[0];
+let SIGNALS_BOT_TOKEN = "8716300226:AAFtHuVEAaxtd1Cq0nMX0wTQsQpzkFkRsas";
 let SIGNALS_BOT_USERNAME = "@FijasIAOficial_bot";
 
-let SUPPORT_BOT_TOKEN = CANDIDATE_SUPPORT_TOKENS[0];
+let SUPPORT_BOT_TOKEN = "8651067640:AAEYET4SaE2qE8vFCfyeZ0pql3vitdJaXH8";
 let SUPPORT_BOT_USERNAME = "@SoporteFijasIA_bot";
+
 
 const ADMIN_TELEGRAM_ID = process.env.ADMIN_TELEGRAM_ID || "5261686165";
 
