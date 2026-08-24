@@ -1989,40 +1989,32 @@ async function pollSupportBotLoop() {
 
 // Initialize and auto-verify both bot tokens
 async function initializeTelegramBots() {
-  // Test Signals Token Candidates
-  for (const token of CANDIDATE_SIGNALS_TOKENS) {
-    try {
-      const res = await fetch(`https://api.telegram.org/bot${token}/getMe`);
-      const data = await res.json();
-      if (data.ok && data.result) {
-        SIGNALS_BOT_TOKEN = token;
-        SIGNALS_BOT_USERNAME = `@${data.result.username}`;
-        console.log(`✅ Signals Bot Verified: ${SIGNALS_BOT_USERNAME} (${data.result.first_name})`);
-        await fetch(`https://api.telegram.org/bot${token}/deleteWebhook?drop_pending_updates=false`).catch(() => {});
-        break;
-      }
-    } catch (e) {}
-  }
+  // Verify Signals Bot
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${SIGNALS_BOT_TOKEN}/getMe`);
+    const data = await res.json();
+    if (data.ok && data.result) {
+      SIGNALS_BOT_USERNAME = `@${data.result.username}`;
+      console.log(`✅ Signals Bot Verified: ${SIGNALS_BOT_USERNAME} (${data.result.first_name})`);
+      await fetch(`https://api.telegram.org/bot${SIGNALS_BOT_TOKEN}/deleteWebhook?drop_pending_updates=false`).catch(() => {});
+    }
+  } catch (e) {}
 
-  // Test Support Token Candidates
-  for (const token of CANDIDATE_SUPPORT_TOKENS) {
-    try {
-      const res = await fetch(`https://api.telegram.org/bot${token}/getMe`);
-      const data = await res.json();
-      if (data.ok && data.result) {
-        SUPPORT_BOT_TOKEN = token;
-        SUPPORT_BOT_USERNAME = `@${data.result.username}`;
-        console.log(`✅ Support Bot Verified: ${SUPPORT_BOT_USERNAME} (${data.result.first_name})`);
-        await fetch(`https://api.telegram.org/bot${token}/deleteWebhook?drop_pending_updates=false`).catch(() => {});
-        break;
-      }
-    } catch (e) {}
-  }
+  // Verify Support Bot
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${SUPPORT_BOT_TOKEN}/getMe`);
+    const data = await res.json();
+    if (data.ok && data.result) {
+      SUPPORT_BOT_USERNAME = `@${data.result.username}`;
+      console.log(`✅ Support Bot Verified: ${SUPPORT_BOT_USERNAME} (${data.result.first_name})`);
+      await fetch(`https://api.telegram.org/bot${SUPPORT_BOT_TOKEN}/deleteWebhook?drop_pending_updates=false`).catch(() => {});
+    }
+  } catch (e) {}
 
-  // Launch independent continuous polling loops
-  setTimeout(pollSignalsBotLoop, 500);
+  // Launch continuous support bot polling loop
   setTimeout(pollSupportBotLoop, 500);
 }
+
 
 // Start polling engines
 initializeTelegramBots();
