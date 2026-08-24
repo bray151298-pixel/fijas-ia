@@ -1,18 +1,24 @@
 import React from 'react';
 import { SportType } from '../types';
 import { SPORTS_LIST } from '../data/matches';
-import { Trophy, Flame, Activity, Sparkles, Zap, Layers } from 'lucide-react';
+import { Trophy, Flame, Activity, Sparkles, Zap, Layers, RefreshCw } from 'lucide-react';
 
 interface MultiSportFilterBarProps {
   selectedSport: SportType | 'all';
   onSelectSport: (sport: SportType | 'all') => void;
   countsBySport: Record<string, number>;
+  onRefreshLiveMatches?: () => void;
+  isLiveSyncing?: boolean;
+  lastSyncTime?: string;
 }
 
 export const MultiSportFilterBar: React.FC<MultiSportFilterBarProps> = ({
   selectedSport,
   onSelectSport,
-  countsBySport
+  countsBySport,
+  onRefreshLiveMatches,
+  isLiveSyncing,
+  lastSyncTime
 }) => {
   const getIcon = (iconName: string) => {
     switch (iconName) {
@@ -89,11 +95,28 @@ export const MultiSportFilterBar: React.FC<MultiSportFilterBarProps> = ({
           })}
         </div>
 
-        {/* Multi-sport Quantitative Badge */}
-        <div className="hidden lg:flex items-center gap-2 text-xs text-slate-400 min-w-max border-l border-slate-800 pl-4">
-          <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-          <span className="text-slate-300 font-medium">Modelos Cuantitativos:</span>
-          <span className="text-amber-400 font-mono text-[11px]">Algoritmo Cuantitativo FIJAS IA</span>
+        {/* Live Sync Controls and Timestamps */}
+        <div className="flex items-center gap-3 min-w-max border-l border-slate-800 pl-4">
+          {onRefreshLiveMatches && (
+            <button
+              id="btn-sync-live-matches"
+              onClick={onRefreshLiveMatches}
+              disabled={isLiveSyncing}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 text-xs font-bold border border-emerald-500/40 transition-all active:scale-95 disabled:opacity-50"
+              title="Consultar fixtures oficiales de ESPN y marcadores en vivo de hoy"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isLiveSyncing ? 'animate-spin' : ''}`} />
+              <span>{isLiveSyncing ? 'Sincronizando...' : 'Escanear Hoy'}</span>
+            </button>
+          )}
+
+          <div className="hidden lg:flex items-center gap-2 text-xs text-slate-400">
+            <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="text-slate-300 font-medium">Partidos Hoy (Hora Lima):</span>
+            <span className="text-emerald-400 font-mono text-[11px] font-bold">
+              {lastSyncTime || 'En Vivo'}
+            </span>
+          </div>
         </div>
       </div>
     </div>

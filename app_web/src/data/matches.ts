@@ -278,7 +278,7 @@ export const EV_SIGNALS_LIST: EVSignal[] = [
   },
   // 5. Béisbol MLB
   {
-    id: 'ev-mlb-1',
+    id: 'ev-mlb-2',
     sport: 'baseball',
     matchId: 'match-yankees-redsox',
     matchTitle: 'NY Yankees vs Boston Red Sox',
@@ -332,7 +332,7 @@ export const EV_SIGNALS_LIST: EVSignal[] = [
   },
   // 7. Fútbol - La Liga
   {
-    id: 'ev-3',
+    id: 'ev-7-rma-bet',
     sport: 'football',
     matchId: 'match-rma-bet',
     matchTitle: 'Real Madrid vs Real Betis',

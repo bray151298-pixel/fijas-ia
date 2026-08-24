@@ -24,7 +24,7 @@ export const TELEGRAM_CONFIG = {
   signalsBotToken: '8716300226:AAFtHuVEAaxtd1Cq0nMX0wTQsQpzkFkRsas',
   signalsBotUsername: '@FijasIAOficial_bot',
   // Bot de Soporte & Ventas VIP
-  supportBotToken: '8651067640:AAEj5wcb4qlIHgm7BjGOdxkUF0ccMRi9LXU',
+  supportBotToken: '8651067640:AAEYET4SaE2qE8vFCfyeZ0pql3vitdJaXH8',
   supportBotUsername: '@SoporteFijasIA_bot',
   // Canal Público y VIP
   publicChannel: '@FijasIAOficial',

@@ -56,6 +56,9 @@ import {
 import {
   LiveScannerModal
 } from './components/LiveScannerModal';
+import {
+  AdminLoginGateModal
+} from './components/AdminLoginGateModal';
 import { 
   sendTelegramMessage,
   TELEGRAM_CONFIG,
@@ -67,6 +70,10 @@ import {
   DEFAULT_VIP_PLANS,
   DEFAULT_PAYMENT_SETTINGS
 } from './services/telegramService';
+import { 
+  fetchLiveESPNFutureMatches,
+  convertESPNToAppMatches 
+} from './services/espnService';
 import { 
   Match, 
   EVSignal, 
@@ -103,7 +110,8 @@ import {
   Trophy, 
   Flame, 
   Activity,
-  Sparkles
+  Sparkles,
+  CalendarCheck
 } from 'lucide-react';
 
 const DEFAULT_BANKROLL_SETTINGS: BankrollSettings = {
@@ -199,10 +207,32 @@ const INITIAL_AUTOPILOT_STATE: AutoPilotState = {
 };
 
 export default function App() {
-  // Application Data States
+  // Admin Login Security Gate (Restricted Access: admin / FijasIA2026*)
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => {
+    try {
+      return Boolean(localStorage.getItem('fijas_ia_admin_auth'));
+    } catch (e) {
+      return false;
+    }
+  });
+
+  // Application Data States (Dynamic Real-Time ESPN & Server Synced)
   const [matches, setMatches] = useState<Match[]>(MATCHES_DATA);
   const [evSignals, setEvSignals] = useState<EVSignal[]>(EV_SIGNALS_LIST);
   const [kpis, setKpis] = useState(INITIAL_KPIS);
+  const [isLiveSyncing, setIsLiveSyncing] = useState<boolean>(false);
+  const [lastSyncTime, setLastSyncTime] = useState<string>(() => {
+    try {
+      return new Date().toLocaleTimeString('es-PE', {
+        timeZone: 'America/Lima',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+      });
+    } catch {
+      return 'En Vivo';
+    }
+  });
 
   // AutoPilot 24/7 Automated Bot Scheduler State
   const [autoPilot, setAutoPilot] = useState<AutoPilotState>(() => {
@@ -266,6 +296,7 @@ export default function App() {
   const [isAutoLearningOpen, setIsAutoLearningOpen] = useState<boolean>(false);
   const [isMasterCycleOpen, setIsMasterCycleOpen] = useState<boolean>(false);
   const [isLiveScannerOpen, setIsLiveScannerOpen] = useState<boolean>(false);
+  const [activeMobileView, setActiveMobileView] = useState<'both' | 'signals' | 'matches'>('both');
 
   // Recalculate local Audit Performance based on tracked picks
   const recalculateAudit = (picks: TrackedPick[]): AuditPerformance => {
@@ -367,114 +398,43 @@ export default function App() {
     }
   };
 
-  // Auto-Fetch Real-Time ESPN Matches on Load & Every 60s
-  const syncLiveESPNMatches = async () => {
+  // Sincronización en vivo con ESPN y API de Partidos de Hoy
+  const syncLiveMatchesFromESPN = async (isManual = false) => {
+    setIsLiveSyncing(true);
     try {
-      const liveData = await fetchLiveESPNFutureMatches();
-      if (liveData && liveData.allScheduled && liveData.allScheduled.length > 0) {
-        const transformedMatches: Match[] = liveData.allScheduled.map((item: ESPNScheduledMatch, idx: number) => {
-          const rec = item.recommendedPick;
-          return {
-            id: item.id || `espn-match-${idx}`,
-            sport: item.sport,
-            league: (item.leagueId as any) || 'all',
-            homeTeam: item.homeTeam,
-            awayTeam: item.awayTeam,
-            homeLogo: item.homeLogo,
-            awayLogo: item.awayLogo,
-            venue: item.venue || 'Estadio Principal',
-            kickoffDate: item.isoDate ? item.isoDate.slice(0, 10) : new Date().toISOString().slice(0, 10),
-            kickoffTime: item.timeOnlyLima || '18:00',
-            kickoffTimestamp: item.kickoffTimestamp || Date.now(),
-            apuestaTotalEventId: item.id,
-            odds: {
-              home: rec?.odds || 1.85,
-              draw: 3.40,
-              away: 3.50,
-              over25: 1.90,
-              under25: 1.90,
-              doubleChance1X: 1.25
-            },
-            modelProbabilities: {
-              home: rec?.modelProb || 65,
-              draw: 20,
-              away: 15,
-              over25: 55,
-              under25: 45
-            },
-            fairOdds: {
-              home: rec?.fairOdds || 1.55,
-              draw: 5.00,
-              away: 6.60,
-              over25: 1.80,
-              under25: 2.20
-            },
-            bestValueBet: {
-              market: rec?.market || 'Línea de Dinero (1X2)',
-              selection: rec?.selection || `${item.homeTeam} Gana`,
-              odds: rec?.odds || 1.85,
-              fairOdds: rec?.fairOdds || 1.55,
-              modelProb: rec?.modelProb || 65,
-              impliedProb: 54,
-              edge: rec?.edge || 11.0,
-              stake: '+2.0u',
-              confidence: 85,
-              urgency: 'ALTA',
-              rationale: rec?.analysis || 'Análisis cuantitativo de valor detectado con +EV superior al 10%.'
-            },
-            absences: [],
-            h2hHistory: [],
-            weather: { condition: 'Despejado', temperatureC: 22, rainProb: 5 },
-            tacticalSummary: rec?.analysis || 'Ventaja táctica y valor positivo proyectado.',
-            status: item.statusState === 'in' ? 'LIVE' : (item.statusState === 'post' ? 'FINISHED' : 'NOT_STARTED')
-          };
-        });
-
-        const transformedSignals: EVSignal[] = liveData.allScheduled
-          .filter(item => Boolean(item.recommendedPick))
-          .map((item: ESPNScheduledMatch, idx: number) => {
-            const rec = item.recommendedPick!;
-            return {
-              id: `ev-live-${idx}`,
-              sport: item.sport,
-              matchId: item.id,
-              matchTitle: `${item.homeTeam} vs ${item.awayTeam}`,
-              league: item.league,
-              market: rec.market,
-              selection: rec.selection,
-              odds: rec.odds,
-              fairOdds: rec.fairOdds,
-              modelProb: rec.modelProb,
-              impliedProb: Number(((1 / rec.odds) * 100).toFixed(1)),
-              edge: rec.edge,
-              stake: '+2.0u',
-              confidence: 88,
-              urgency: 'ALTA',
-              rationale: rec.analysis,
-              timeToKickoff: item.timeOnlyLima
-            };
-          });
-
-        if (transformedMatches.length > 0) {
-          setMatches(transformedMatches);
-        }
-        if (transformedSignals.length > 0) {
-          setEvSignals(transformedSignals);
+      const liveESPN = await fetchLiveESPNFutureMatches();
+      if (liveESPN && liveESPN.allScheduled && liveESPN.allScheduled.length > 0) {
+        const converted = convertESPNToAppMatches(liveESPN.allScheduled);
+        if (converted.matches.length > 0) {
+          setMatches(converted.matches);
+          if (converted.signals.length > 0) {
+            setEvSignals(converted.signals);
+          }
+          setKpis(prev => ({
+            ...prev,
+            matchesAnalyzedToday: converted.matches.length,
+            evSignalsDetected: converted.signals.length || prev.evSignalsDetected,
+            engineStatus: `Sincronizado ESPN En Vivo (${converted.matches.length} partidos oficiales de hoy)`
+          }));
         }
       }
+      const timeStr = new Date().toLocaleTimeString('es-PE', {
+        timeZone: 'America/Lima',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+      });
+      setLastSyncTime(`${timeStr} (Lima)`);
     } catch (err) {
-      console.warn('Live ESPN fetch error:', err);
+      console.warn('Error fetching live ESPN matches:', err);
+    } finally {
+      setIsLiveSyncing(false);
     }
   };
 
   useEffect(() => {
-    syncLiveESPNMatches();
-    const interval = setInterval(syncLiveESPNMatches, 60000);
-    return () => clearInterval(interval);
-  }, []);
-
-  useEffect(() => {
     fetchServerTrackedPicks();
+    syncLiveMatchesFromESPN();
 
     const fetchLearning = async () => {
       try {
@@ -491,6 +451,13 @@ export default function App() {
     };
 
     fetchLearning();
+
+    // Auto-refresh match feed every 60 seconds
+    const intervalId = setInterval(() => {
+      syncLiveMatchesFromESPN();
+    }, 60000);
+
+    return () => clearInterval(intervalId);
   }, []);
 
   // Handler: Settle Pick
@@ -1029,6 +996,17 @@ export default function App() {
     mma: matches.filter(m => m.sport === 'mma').length
   };
 
+  const handleAdminLogout = () => {
+    try {
+      localStorage.removeItem('fijas_ia_admin_auth');
+    } catch (e) {}
+    setIsAdminAuthenticated(false);
+  };
+
+  if (!isAdminAuthenticated) {
+    return <AdminLoginGateModal onLoginSuccess={() => setIsAdminAuthenticated(true)} />;
+  }
+
   return (
     <div className="min-h-screen bg-[#090D16] text-slate-100 flex flex-col font-sans selection:bg-emerald-500 selection:text-black">
       {/* 1. Universal Top Header */}
@@ -1036,6 +1014,7 @@ export default function App() {
         engineConfig={engineConfig}
         bankrollSettings={bankrollSettings}
         isAutoPilotActive={autoPilot.isEnabled}
+        onLogout={handleAdminLogout}
         onOpenAutoPilotModal={() => setIsAutoPilotModalOpen(true)}
         onOpenSalesAgentModal={() => setIsSalesAgentModalOpen(true)}
         onOpenVIPModal={() => setIsVIPModalOpen(true)}
@@ -1066,6 +1045,9 @@ export default function App() {
         selectedSport={selectedSport}
         onSelectSport={(sport) => setSelectedSport(sport)}
         countsBySport={countsBySport}
+        onRefreshLiveMatches={() => syncLiveMatchesFromESPN(true)}
+        isLiveSyncing={isLiveSyncing}
+        lastSyncTime={lastSyncTime}
       />
 
       {/* 4. Algorithm KPIs Header (No personal balances) */}
@@ -1075,11 +1057,50 @@ export default function App() {
         onSelectSignalFilter={() => setSelectedLeague('all')}
       />
 
-      {/* 5. Main Command Center (2-Column Architecture) */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 lg:px-8 py-6">
+      {/* 5. Main Command Center (Responsive Architecture) */}
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 lg:px-8 py-5">
+        {/* Mobile View Switcher (Visible only on mobile/tablets < lg) */}
+        <div className="lg:hidden mb-4 flex items-center justify-between p-1.5 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-md">
+          <button
+            type="button"
+            onClick={() => setActiveMobileView('both')}
+            className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all text-center ${
+              activeMobileView === 'both'
+                ? 'bg-slate-800 text-white shadow-sm'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            Vista Completa
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveMobileView('signals')}
+            className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 ${
+              activeMobileView === 'signals'
+                ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Zap className="w-3.5 h-3.5" />
+            <span>Señales +EV ({evSignals.length})</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveMobileView('matches')}
+            className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 ${
+              activeMobileView === 'matches'
+                ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <CalendarCheck className="w-3.5 h-3.5" />
+            <span>Partidos ({matches.length})</span>
+          </button>
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
           {/* Column Left: Señales de Valor +EV (5 cols on lg) */}
-          <section className="lg:col-span-5 w-full">
+          <section className={`lg:col-span-5 w-full ${activeMobileView === 'matches' ? 'hidden lg:block' : 'block'}`}>
             <EVSignalsColumn
               signals={evSignals}
               matches={matches}
@@ -1092,7 +1113,7 @@ export default function App() {
           </section>
 
           {/* Column Right: Partidos Oficiales (7 cols on lg) */}
-          <section className="lg:col-span-7 w-full">
+          <section className={`lg:col-span-7 w-full ${activeMobileView === 'signals' ? 'hidden lg:block' : 'block'}`}>
             <OfficialMatchesColumn
               matches={matches}
               onSelectMatch={(match) => setActiveMatch(match)}

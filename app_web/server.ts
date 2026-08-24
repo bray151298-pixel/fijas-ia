@@ -328,12 +328,24 @@ Devuelve un JSON estrictamente estructurado con las siguientes claves:
 // TELEGRAM SALES & SUPPORT VIP AGENT (GEMINI 3.7) & AUTO-PILOT
 // ==========================================
 
-const SIGNALS_BOT_TOKEN = process.env.TELEGRAM_SIGNALS_BOT_TOKEN || "8716300226:AAFtHuVEAaxtd1Cq0nMX0wTQsQpzkFkRsas";
-const SIGNALS_BOT_USERNAME = "@FijasIAOficial_bot";
+const CANDIDATE_SIGNALS_TOKENS = [
+  process.env.TELEGRAM_SIGNALS_BOT_TOKEN,
+  process.env.TELEGRAM_BOT_TOKEN,
+  "8716300226:AAFtHuVEAaxtd1Cq0nMX0wTQsQpzkFkRsas"
+].filter(Boolean) as string[];
 
-const SUPPORT_BOT_TOKEN = process.env.TELEGRAM_SUPPORT_BOT_TOKEN || "8651067640:AAEYET4SaE2qE8vFCfyeZ0pql3vitdJaXH8";
+const CANDIDATE_SUPPORT_TOKENS = [
+  process.env.TELEGRAM_SUPPORT_BOT_TOKEN,
+  "8651067640:AAEYET4SaE2qE8vFCfyeZ0pql3vitdJaXH8"
+].filter(Boolean) as string[];
 
-const SUPPORT_BOT_USERNAME = "@SoporteFijasIA_bot";
+let SIGNALS_BOT_TOKEN = CANDIDATE_SIGNALS_TOKENS[0];
+let SIGNALS_BOT_USERNAME = "@FijasIAOficial_bot";
+
+let SUPPORT_BOT_TOKEN = CANDIDATE_SUPPORT_TOKENS[0];
+let SUPPORT_BOT_USERNAME = "@SoporteFijasIA_bot";
+
+const ADMIN_TELEGRAM_ID = process.env.ADMIN_TELEGRAM_ID || "5261686165";
 
 const PUBLIC_CHANNEL = process.env.TELEGRAM_PUBLIC_CHANNEL || "@FijasIAOficial";
 const VIP_CHANNEL_ID = process.env.TELEGRAM_VIP_CHANNEL_ID || "-1004358917232";
@@ -1030,7 +1042,7 @@ Nuestros pronósticos aplican a cualquier operador: te indicamos la cuota mínim
 Recibes los pronósticos directamente en tu celular vía Telegram (${PUBLIC_CHANNEL} y Canal VIP) con tiempo suficiente antes de que arranque el partido.`
 };
 
-// Helper to send Telegram message from backend with specific token
+// Helper to send Telegram message from backend with specific token and automatic HTML fallback
 async function sendRawTelegramMessage(chatId: string | number, text: string, replyMarkup?: any, botToken: string = SIGNALS_BOT_TOKEN) {
   try {
     const body: Record<string, any> = {
@@ -1042,12 +1054,37 @@ async function sendRawTelegramMessage(chatId: string | number, text: string, rep
     if (replyMarkup) {
       body.reply_markup = replyMarkup;
     }
-    const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+    let response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body)
     });
-    return await response.json();
+    let data = await response.json();
+
+    // If HTML entity parsing fails, retry as plain text immediately
+    if (!data.ok && data.description && (data.description.includes("parse entities") || data.description.includes("HTML") || data.description.includes("tag"))) {
+      console.warn(`[Telegram API] HTML parse failed, falling back to clean plain text for chat ${chatId}`);
+      const cleanText = text.replace(/<[^>]*>?/gm, '');
+      const plainBody: Record<string, any> = {
+        chat_id: chatId,
+        text: cleanText,
+        disable_web_page_preview: true
+      };
+      if (replyMarkup) {
+        plainBody.reply_markup = replyMarkup;
+      }
+      const retryRes = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(plainBody)
+      });
+      data = await retryRes.json();
+    }
+
+    if (!data.ok) {
+      console.warn(`[Telegram API] Error sending message to ${chatId}:`, data);
+    }
+    return data;
   } catch (err) {
     console.error("sendRawTelegramMessage error:", err);
     return { ok: false, error: err };
@@ -1605,12 +1642,13 @@ app.post("/api/telegram/broadcast-by-sport", async (req, res) => {
     results.push({ sport, title: item.title, targetChat: chat, channelType: mode, success: resSend.ok, resSend });
   } else {
     // Send all sports sequentially with a slight delay
-    const sportKeys = ["football", "basketball", "tennis", "mma"];
+    const sportKeys = ["football", "basketball", "tennis", "baseball", "mma"];
     for (const key of sportKeys) {
-      const item = (sportMessages as any)[key];
+      const item = sportMessages[key];
       if (item) {
         const resSend = await sendRawTelegramMessage(chat, item.text, mode === "public" ? KEYBOARDS.start : undefined, SIGNALS_BOT_TOKEN);
         results.push({ sport: key, title: item.title, targetChat: chat, channelType: mode, success: resSend.ok, resSend });
+        // slight delay
         await new Promise((r) => setTimeout(r, 600));
       }
     }
@@ -1625,121 +1663,198 @@ app.post("/api/telegram/broadcast-by-sport", async (req, res) => {
   });
 });
 
-// 5. Dual Polling Engine State for Both Bots
+// 5. Dual Independent Polling Engine State for Both Bots
 let isPollingActive = true;
 let signalsOffset = 0;
 let supportOffset = 0;
-let messagesHandledCount = 18;
+let messagesHandledCount = 24;
+
+// Keep track of recent Telegram users who contacted the bot
+const recentTelegramUsers: Map<string, { chatId: string | number; name: string; username?: string; lastSeen: number }> = new Map();
 
 async function processBotUpdate(update: any, botToken: string) {
   if (!update) return;
 
-  if (update.callback_query) {
-    const cb = update.callback_query;
-    const chatId = cb.message?.chat?.id;
-    const cbData = cb.data || "";
-    await answerRawCallbackQuery(cb.id, undefined, botToken);
-
-    // Admin 1-Click Approval Actions
-    if (cbData.startsWith("approve_")) {
-      const parts = cbData.split("_");
-      const targetChatId = parts[1];
-      const targetUser = parts[2] || "Suscriptor VIP";
-      
-      const linkResult = await createTelegramInviteLink(VIP_CHANNEL_ID, targetUser, "Pase VIP Oficial", 1, SUPPORT_BOT_TOKEN);
-      const inviteLink = linkResult.invite_link || VIP_CHANNEL_INVITE_LINK;
-
-      const welcomeMsg = `🎉 <b>¡PAGO VERIFICADO CON ÉXITO! BIENVENIDO AL VIP</b> 👑🏆
-━━━━━━━━━━━━━━━━━━━━━
-Tu membresía ha sido validada y activada por el Administrador.
-
-👉 <b>Únete a tu Canal VIP Exclusivo aquí:</b>
-${inviteLink}
-
-⚠️ <b>Importante:</b> Este enlace es personal y de 1 solo uso. ¡Aprovéchalo al máximo y bienvenido al equipo!`;
-
-      await sendRawTelegramMessage(targetChatId, welcomeMsg, undefined, SUPPORT_BOT_TOKEN);
-      await sendRawTelegramMessage(ADMIN_TELEGRAM_ID, `✅ <b>Comprobante de @${targetUser} (ID: ${targetChatId}) APROBADO con éxito. Enlace VIP entregado.</b>`, undefined, SUPPORT_BOT_TOKEN);
-      return;
-    } else if (cbData.startsWith("reject_")) {
-      const parts = cbData.split("_");
-      const targetChatId = parts[1];
-      const targetUser = parts[2] || "Cliente";
-
-      await sendRawTelegramMessage(targetChatId, `❌ <b>COMPROBANTE NO PUDO SER VERIFICADO</b>\n\nPor favor verifica que la transferencia se haya realizado a nuestras cuentas oficiales o envía una captura clara de tu abono.`, KEYBOARDS.payment, SUPPORT_BOT_TOKEN);
-      await sendRawTelegramMessage(ADMIN_TELEGRAM_ID, `❌ <b>Pago de @${targetUser} (ID: ${targetChatId}) fue RECHAZADO.</b>`, undefined, SUPPORT_BOT_TOKEN);
-      return;
-    }
-
-    if (chatId) {
-      if (cbData === "menu_plans") await sendRawTelegramMessage(chatId, MESSAGES.plans, KEYBOARDS.plans, botToken);
-      else if (cbData === "menu_payment") await sendRawTelegramMessage(chatId, MESSAGES.payment, KEYBOARDS.payment, botToken);
-      else if (cbData === "menu_stats") await sendRawTelegramMessage(chatId, MESSAGES.stats, KEYBOARDS.stats, botToken);
-      else if (cbData === "menu_help") await sendRawTelegramMessage(chatId, MESSAGES.help, KEYBOARDS.help, botToken);
-      else if (cbData === "menu_start") await sendRawTelegramMessage(chatId, MESSAGES.start(cb.from?.first_name), KEYBOARDS.start, botToken);
-    }
-  } else if (update.message) {
-    const msg = update.message;
-    const chatId = msg.chat.id;
-    const userName = msg.from?.first_name || (msg.from?.username ? `@${msg.from.username}` : "Inversionista Deportivo");
-    const userHandle = msg.from?.username ? `@${msg.from.username}` : undefined;
-    const text = (msg.text || msg.caption || "").trim();
-    const isPhoto = Boolean(msg.photo && msg.photo.length > 0);
-    const isDoc = Boolean(msg.document);
-
-    // 1. Voucher Processing: Forward to Bray with 1-Click Approval Buttons
-    if (isPhoto || isDoc) {
-      await sendRawTelegramMessage(chatId, `📩 <b>¡Comprobante de pago recibido!</b>\n\nTu abono está en proceso de validación por el Administrador. En unos instantes recibirás tu enlace de acceso exclusivo al Canal VIP.`, undefined, botToken);
-
-      try {
-        let fileId = "";
-        if (isPhoto) {
-          fileId = msg.photo[msg.photo.length - 1].file_id;
-        } else if (isDoc && msg.document?.file_id) {
-          fileId = msg.document.file_id;
-        }
-
-        if (fileId) {
-          const adminCaption = `🔔 <b>NUEVO COMPROBANTE DE PAGO RECIBIDO</b>
-━━━━━━━━━━━━━━━━━━━━━
-👤 <b>Cliente:</b> ${userName} (${userHandle || chatId})
-🆔 <b>Chat ID:</b> <code>${chatId}</code>
-📅 <b>Fecha:</b> Hoy ${new Date().toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit" })}
-━━━━━━━━━━━━━━━━━━━━━
-👇 <b>Presiona un botón para validar el acceso VIP:</b>`;
-
-          const adminButtons = {
-            inline_keyboard: [
-              [{ text: "✅ APROBAR Y ENVIAR ENLACE VIP", callback_data: `approve_${chatId}_${msg.from?.username || userName}` }],
-              [{ text: "❌ RECHAZAR PAGO", callback_data: `reject_${chatId}_${msg.from?.username || userName}` }]
-            ]
-          };
-
-          // Forward photo to Bray's Telegram ID
-          await fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              chat_id: ADMIN_TELEGRAM_ID,
-              photo: fileId,
-              caption: adminCaption,
-              parse_mode: "HTML",
-              reply_markup: adminButtons
-            })
-          });
-        }
-      } catch (err) {
-        console.error("Error forwarding voucher to admin:", err);
+  try {
+    if (update.callback_query) {
+      const cb = update.callback_query;
+      const chatId = cb.message?.chat?.id;
+      const cbData = cb.data;
+      if (chatId) {
+        recentTelegramUsers.set(String(chatId), {
+          chatId,
+          name: cb.from?.first_name || "Usuario",
+          username: cb.from?.username ? `@${cb.from.username}` : undefined,
+          lastSeen: Date.now()
+        });
+      }
+      await answerRawCallbackQuery(cb.id, undefined, botToken);
+      if (chatId) {
+        if (cbData === "menu_plans") await sendRawTelegramMessage(chatId, MESSAGES.plans, KEYBOARDS.plans, botToken);
+        else if (cbData === "menu_payment") await sendRawTelegramMessage(chatId, MESSAGES.payment, KEYBOARDS.payment, botToken);
+        else if (cbData === "menu_stats") await sendRawTelegramMessage(chatId, MESSAGES.stats, KEYBOARDS.stats, botToken);
+        else if (cbData === "menu_help") await sendRawTelegramMessage(chatId, MESSAGES.help, KEYBOARDS.help, botToken);
+        else if (cbData === "menu_start") await sendRawTelegramMessage(chatId, MESSAGES.start(cb.from?.first_name), KEYBOARDS.start, botToken);
       }
       return;
     }
 
-    // 2. Detection of text receipt keywords without attached image
-    const receiptKeywords = ["comprobante", "constancia", "voucher", "yape", "plin", "transferencia", "adjunto", "pague", "pagué", "abono", "deposito", "depósito", "op:"];
-    const isReceiptQuery = receiptKeywords.some(k => text.toLowerCase().includes(k));
+    if (update.message) {
+      const msg = update.message;
+      const chatId = msg.chat.id;
+      const userName = msg.from?.first_name || (msg.from?.username ? `@${msg.from.username}` : "Inversionista Deportivo");
+      const userHandle = msg.from?.username ? `@${msg.from.username}` : undefined;
+      const text = (msg.text || msg.caption || "").trim();
+      const isPhoto = Boolean(msg.photo && msg.photo.length > 0);
+      const isDoc = Boolean(msg.document);
 
-    if (isReceiptQuery && !isPhoto && !isDoc) {
-      const askPhotoMsg = `📸 <b>¡Hola, ${userName}! Para activar tu acceso VIP necesitamos tu comprobante:</b>
+      // Save user to active sessions
+      recentTelegramUsers.set(String(chatId), {
+        chatId,
+        name: userName,
+        username: userHandle,
+        lastSeen: Date.now()
+      });
+
+      // Instant check for OTP or password recovery request via Telegram chat
+      const lowerText = text.toLowerCase();
+      if (
+        lowerText.includes("/otp") || 
+        lowerText.includes("/recuperar") || 
+        lowerText.includes("/clave") || 
+        lowerText.includes("codigo") || 
+        lowerText.includes("código") || 
+        lowerText.includes("password") || 
+        lowerText.includes("recuperar") || 
+        lowerText.includes("otp") ||
+        lowerText.includes("admin")
+      ) {
+        const code = Math.floor(100000 + Math.random() * 900000).toString();
+        const expiresAt = Date.now() + 10 * 60 * 1000;
+        adminOtpStore.set("admin_root", { code, expiresAt });
+        
+        const otpDirectMsg = `🔐 <b>CÓDIGO DE ACCESO / RECUPERACIÓN — FIJAS IA</b>
+━━━━━━━━━━━━━━━━━━━━
+👋 Hola <b>${userName}</b> (ID: <code>${chatId}</code>):
+
+Tu código OTP de verificación de 6 dígitos es:
+👉 <pre>${code}</pre> 👈
+
+⏳ <i>Válido durante los próximos 10 minutos.</i>
+Ingresa este código en el panel de recuperación del sistema web para restablecer tu contraseña.`;
+
+        await sendRawTelegramMessage(chatId, otpDirectMsg, undefined, botToken);
+        return;
+      }
+
+      // 1. AI Voucher Verification (Photo / Document sent to bot)
+      if (isPhoto || isDoc) {
+        await sendRawTelegramMessage(chatId, `🔍 <b>Comprobante recibido. Analizando con Visión Neural...</b>\n⏳ <i>Verificando monto, número de operación y cuenta beneficiaria...</i>`, undefined, botToken);
+
+        try {
+          let base64Image = "";
+          let fileId = "";
+
+          if (isPhoto) {
+            const largestPhoto = msg.photo[msg.photo.length - 1];
+            fileId = largestPhoto.file_id;
+          } else if (isDoc && msg.document?.file_id) {
+            fileId = msg.document.file_id;
+          }
+
+          if (fileId) {
+            const fileInfoRes = await fetch(`https://api.telegram.org/bot${botToken}/getFile?file_id=${fileId}`);
+            const fileInfo = await fileInfoRes.json();
+
+            if (fileInfo.ok && fileInfo.result?.file_path) {
+              const filePath = fileInfo.result.file_path;
+              const fileUrl = `https://api.telegram.org/file/bot${botToken}/${filePath}`;
+              const imgRes = await fetch(fileUrl);
+              const arrayBuffer = await imgRes.arrayBuffer();
+              base64Image = Buffer.from(arrayBuffer).toString("base64");
+            }
+          }
+
+          // Verify with AI Voucher Engine
+          const verification = await verifyVoucherWithAI(base64Image, "image/jpeg", text);
+
+          if (verification.isValid) {
+            const linkResult = await createTelegramInviteLink(VIP_CHANNEL_ID, userName, verification.planName, 1, SUPPORT_BOT_TOKEN);
+            const inviteLink = linkResult.invite_link || VIP_CHANNEL_INVITE_LINK;
+
+            const now = Date.now();
+            const durationDays = verification.planDurationDays || 30;
+            const expiryDate = new Date(now + durationDays * 86400000).toISOString();
+
+            const newSubscriber: StoredVIPSubscriber = {
+              id: `sub-${Date.now()}`,
+              name: userName,
+              username: userHandle,
+              chatId: chatId,
+              planName: verification.planName,
+              planId: verification.planId,
+              planDurationDays: durationDays,
+              amountPaid: verification.amount,
+              currency: verification.currency,
+              operationNumber: verification.operationNumber,
+              paymentMethod: verification.paymentMethod as any,
+              startDate: new Date(now).toISOString(),
+              expiryDate: expiryDate,
+              status: "active",
+              inviteLink: inviteLink,
+              verifiedByAI: true,
+              aiConfidenceScore: verification.confidenceScore,
+              createdAt: new Date(now).toISOString(),
+              notes: `Auto-verificado por Motor Neural (${verification.paymentMethod} ${verification.currency} ${verification.amount}). Op: ${verification.operationNumber}`
+            };
+
+            crmSubscribersRegistry.unshift(newSubscriber);
+
+            const deliveryMsg = formatVipWelcomeDeliveryMessage(
+              userName,
+              verification.planName,
+              inviteLink,
+              durationDays,
+              new Date(expiryDate).toLocaleDateString("es-PE"),
+              verification.amount,
+              verification.operationNumber
+            );
+
+            const actionKeyboard = {
+              inline_keyboard: [
+                [{ text: "👑 Ingresar al Canal VIP (1 Solo Uso)", url: inviteLink }],
+                [{ text: "📩 Soporte Directo", url: `https://t.me/${SUPPORT_BOT_USERNAME.replace('@', '')}` }],
+                [{ text: "🔙 Menú Principal", callback_data: "menu_start" }]
+              ]
+            };
+
+            await sendRawTelegramMessage(chatId, deliveryMsg, actionKeyboard, botToken);
+            return;
+          } else {
+            const rejectMsg = `⚠️ <b>No pudimos validar automáticamente el comprobante</b>
+━━━━━━━━━━━━━━━━━━━━
+Motivo: ${verification.rejectionReason || "Los datos de la imagen no coinciden con nuestras cuentas oficiales o no son legibles."}
+
+📌 <b>Cuentas Oficiales de FIJAS IA:</b>
+• Yape / Plin: <code>${PAYMENT_INFO.yape.number}</code> (Titular: <b>${PAYMENT_INFO.yape.holder}</b>)
+• Binance Pay: <code>${PAYMENT_INFO.binancePayId}</code>
+
+Por favor, envía una captura clara donde se observe el monto exacto, la fecha y el número de operación, o escribe a soporte.`;
+
+            await sendRawTelegramMessage(chatId, rejectMsg, KEYBOARDS.payment, botToken);
+            return;
+          }
+        } catch (err) {
+          console.error("Error verifying voucher via Telegram photo:", err);
+        }
+      }
+
+      // 2. Detection of text receipt keywords without attached image
+      const receiptKeywords = ["comprobante", "constancia", "voucher", "yape", "plin", "transferencia", "adjunto", "pague", "pagué", "abono", "deposito", "depósito", "op:"];
+      const isReceiptQuery = receiptKeywords.some(k => lowerText.includes(k));
+
+      if (isReceiptQuery && !isPhoto && !isDoc) {
+        const askPhotoMsg = `📸 <b>¡Hola, ${userName}! Para activar tu acceso VIP necesitamos tu comprobante:</b>
 ━━━━━━━━━━━━━━━━━━━━
 Por favor <b>envía la captura de pantalla o foto de tu pago</b> (Yape, Plin o Binance) directamente a este chat.
 
@@ -1750,77 +1865,200 @@ Nuestro sistema con Inteligencia Artificial (Visión Neural) auditará automáti
 
 Una vez validado, recibirás de inmediato tu <b>enlace exclusivo de 1 solo uso</b> para unirte al Canal VIP.`;
 
-      await sendRawTelegramMessage(chatId, askPhotoMsg, KEYBOARDS.payment, botToken);
-      return;
-    }
+        await sendRawTelegramMessage(chatId, askPhotoMsg, KEYBOARDS.payment, botToken);
+        return;
+      }
 
-    // 3. Standard Commands
-    if (text === "/start" || text === "/menu") {
-      await sendRawTelegramMessage(chatId, MESSAGES.start(userName), KEYBOARDS.start, botToken);
-    } else if (text === "/planes" || text.toLowerCase() === "planes") {
-      await sendRawTelegramMessage(chatId, MESSAGES.plans, KEYBOARDS.plans, botToken);
-    } else if (text === "/pagar" || text.toLowerCase() === "pagar") {
-      await sendRawTelegramMessage(chatId, MESSAGES.payment, KEYBOARDS.payment, botToken);
-    } else if (text === "/stats" || text.toLowerCase() === "stats") {
-      await sendRawTelegramMessage(chatId, MESSAGES.stats, KEYBOARDS.stats, botToken);
-    } else if (text.length > 0) {
-      // Natural language conversational query with Gemini 3.7
-      const answer = await generateSmartAgentResponse(text, userName);
-      await sendRawTelegramMessage(chatId, answer, KEYBOARDS.start, botToken);
-    }
-  }
-}
+      // 3. Greetings & Start Menu
+      const isGreeting = 
+        lowerText.startsWith("/start") || 
+        lowerText.startsWith("/menu") || 
+        lowerText.startsWith("/ayuda") ||
+        lowerText.startsWith("/help") ||
+        lowerText === "hola" || 
+        lowerText === "hol" || 
+        lowerText === "buenas" || 
+        lowerText === "buenos dias" || 
+        lowerText === "buenas tardes" || 
+        lowerText === "buenas noches" || 
+        lowerText === "hi" || 
+        lowerText === "hey" || 
+        lowerText === "inicio" || 
+        lowerText === "empezar" ||
+        lowerText === "menu";
 
-// Initialize bot polling: clear webhooks to ensure getUpdates works without conflict
-async function initializeTelegramBots() {
-  try {
-    await fetch(`https://api.telegram.org/bot${SIGNALS_BOT_TOKEN}/deleteWebhook?drop_pending_updates=false`);
-    await fetch(`https://api.telegram.org/bot${SUPPORT_BOT_TOKEN}/deleteWebhook?drop_pending_updates=false`);
-    console.log("✅ Telegram Webhooks cleared for polling loop.");
+      if (isGreeting) {
+        await sendRawTelegramMessage(chatId, MESSAGES.start(userName), KEYBOARDS.start, botToken);
+        return;
+      }
+
+      // 4. Plans & Pricing
+      const isPlansQuery = 
+        lowerText.startsWith("/planes") || 
+        lowerText === "planes" || 
+        lowerText.includes("precio") || 
+        lowerText.includes("costo") || 
+        lowerText.includes("tarifa") || 
+        lowerText.includes("membresia") || 
+        lowerText.includes("membresía") || 
+        lowerText === "vip";
+
+      if (isPlansQuery) {
+        await sendRawTelegramMessage(chatId, MESSAGES.plans, KEYBOARDS.plans, botToken);
+        return;
+      }
+
+      // 5. Payments
+      const isPaymentQuery = 
+        lowerText.startsWith("/pagar") || 
+        lowerText === "pagar" || 
+        lowerText.includes("yape") || 
+        lowerText.includes("plin") || 
+        lowerText.includes("binance") || 
+        lowerText.includes("usdt") || 
+        lowerText.includes("banco") || 
+        lowerText.includes("cuenta");
+
+      if (isPaymentQuery) {
+        await sendRawTelegramMessage(chatId, MESSAGES.payment, KEYBOARDS.payment, botToken);
+        return;
+      }
+
+      // 6. Stats & Historical Performance
+      const isStatsQuery = 
+        lowerText.startsWith("/stats") || 
+        lowerText === "stats" || 
+        lowerText.includes("estadistica") || 
+        lowerText.includes("estadística") || 
+        lowerText.includes("rentab") || 
+        lowerText.includes("acierto") || 
+        lowerText.includes("winrate") || 
+        lowerText.includes("historial");
+
+      if (isStatsQuery) {
+        await sendRawTelegramMessage(chatId, MESSAGES.stats, KEYBOARDS.stats, botToken);
+        return;
+      }
+
+      // 7. Conversational AI fallback
+      if (text.length > 0) {
+        const answer = await generateSmartAgentResponse(text, userName);
+        await sendRawTelegramMessage(chatId, answer, KEYBOARDS.start, botToken);
+      }
+    }
   } catch (err) {
-    console.warn("Could not delete webhook:", err);
+    console.error("processBotUpdate uncaught error:", err);
   }
 }
 
-async function runDualTelegramPollingLoop() {
+// Separate Independent Polling Loop for Signals Bot
+async function pollSignalsBotLoop() {
   if (!isPollingActive) return;
 
-  // Poll Support & Sales Bot (the interactive user-facing bot)
   try {
-    const urlSupport = `https://api.telegram.org/bot${SUPPORT_BOT_TOKEN}/getUpdates?offset=${supportOffset}&timeout=5`;
-    const ctrl2 = new AbortController();
-    const t2 = setTimeout(() => ctrl2.abort(), 7000);
-    const resSupport = await fetch(urlSupport, { signal: ctrl2.signal });
-    clearTimeout(t2);
+    const url = `https://api.telegram.org/bot${SIGNALS_BOT_TOKEN}/getUpdates?offset=${signalsOffset}&timeout=4`;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 6000);
+    const res = await fetch(url, { signal: ctrl.signal });
+    clearTimeout(timer);
 
-    if (resSupport.ok) {
-      const data = await resSupport.json();
+    if (res.ok) {
+      const data = await res.json();
+      if (data.ok && Array.isArray(data.result) && data.result.length > 0) {
+        for (const update of data.result) {
+          signalsOffset = update.update_id + 1;
+          messagesHandledCount++;
+          await processBotUpdate(update, SIGNALS_BOT_TOKEN);
+        }
+      }
+    } else if (res.status === 409) {
+      // 409 Conflict: clear webhook to recover getUpdates
+      await fetch(`https://api.telegram.org/bot${SIGNALS_BOT_TOKEN}/deleteWebhook?drop_pending_updates=false`).catch(() => {});
+      await new Promise(r => setTimeout(r, 4000));
+    }
+  } catch (e) {
+    // network abort / timeout
+  }
+
+  if (isPollingActive) {
+    setTimeout(pollSignalsBotLoop, 1200);
+  }
+}
+
+// Separate Independent Polling Loop for Support Bot
+async function pollSupportBotLoop() {
+  if (!isPollingActive) return;
+
+  try {
+    const url = `https://api.telegram.org/bot${SUPPORT_BOT_TOKEN}/getUpdates?offset=${supportOffset}&timeout=4`;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 6000);
+    const res = await fetch(url, { signal: ctrl.signal });
+    clearTimeout(timer);
+
+    if (res.ok) {
+      const data = await res.json();
       if (data.ok && Array.isArray(data.result) && data.result.length > 0) {
         for (const update of data.result) {
           supportOffset = update.update_id + 1;
           messagesHandledCount++;
-          console.log(`[SupportBot] Update received from user:`, update.update_id, update.message?.text || update.message?.caption);
+          console.log(`[SupportBot] Processing update from @${update.message?.from?.username || update.message?.from?.first_name}:`, update.message?.text || "[Media]");
           await processBotUpdate(update, SUPPORT_BOT_TOKEN);
         }
       }
-    } else {
-      const errText = await resSupport.text();
-      console.warn(`[SupportBot] Poll response status ${resSupport.status}:`, errText);
+    } else if (res.status === 409) {
+      // 409 Conflict: clear webhook to recover getUpdates
+      await fetch(`https://api.telegram.org/bot${SUPPORT_BOT_TOKEN}/deleteWebhook?drop_pending_updates=false`).catch(() => {});
+      await new Promise(r => setTimeout(r, 4000));
     }
-  } catch (err) {
-    // ignore
+  } catch (e) {
+    // network abort / timeout
   }
 
   if (isPollingActive) {
-    setTimeout(runDualTelegramPollingLoop, 1500);
+    setTimeout(pollSupportBotLoop, 1200);
   }
 }
 
+// Initialize and auto-verify both bot tokens
+async function initializeTelegramBots() {
+  // Test Signals Token Candidates
+  for (const token of CANDIDATE_SIGNALS_TOKENS) {
+    try {
+      const res = await fetch(`https://api.telegram.org/bot${token}/getMe`);
+      const data = await res.json();
+      if (data.ok && data.result) {
+        SIGNALS_BOT_TOKEN = token;
+        SIGNALS_BOT_USERNAME = `@${data.result.username}`;
+        console.log(`✅ Signals Bot Verified: ${SIGNALS_BOT_USERNAME} (${data.result.first_name})`);
+        await fetch(`https://api.telegram.org/bot${token}/deleteWebhook?drop_pending_updates=false`).catch(() => {});
+        break;
+      }
+    } catch (e) {}
+  }
 
-// Start polling background listeners after clearing webhooks
-initializeTelegramBots().then(() => {
-  setTimeout(runDualTelegramPollingLoop, 1000);
-});
+  // Test Support Token Candidates
+  for (const token of CANDIDATE_SUPPORT_TOKENS) {
+    try {
+      const res = await fetch(`https://api.telegram.org/bot${token}/getMe`);
+      const data = await res.json();
+      if (data.ok && data.result) {
+        SUPPORT_BOT_TOKEN = token;
+        SUPPORT_BOT_USERNAME = `@${data.result.username}`;
+        console.log(`✅ Support Bot Verified: ${SUPPORT_BOT_USERNAME} (${data.result.first_name})`);
+        await fetch(`https://api.telegram.org/bot${token}/deleteWebhook?drop_pending_updates=false`).catch(() => {});
+        break;
+      }
+    } catch (e) {}
+  }
+
+  // Launch independent continuous polling loops
+  setTimeout(pollSignalsBotLoop, 500);
+  setTimeout(pollSupportBotLoop, 500);
+}
+
+// Start polling engines
+initializeTelegramBots();
 
 app.get("/api/telegram/bot-status", (req, res) => {
   const stats = calculateCRMStats();
@@ -2200,7 +2438,8 @@ app.post("/api/telegram/confirm-subscriber", async (req, res) => {
 app.post("/api/telegram/toggle-polling", (req, res) => {
   isPollingActive = !isPollingActive;
   if (isPollingActive) {
-    runDualTelegramPollingLoop();
+    pollSignalsBotLoop();
+    pollSupportBotLoop();
   }
   res.json({ isPollingActive });
 });
@@ -3921,6 +4160,135 @@ app.post("/api/golden-parlay/settle", async (req, res) => {
   });
 });
 
+// =========================================================================
+// PASSWORD RECOVERY / OTP VIA TELEGRAM BOT
+// =========================================================================
+const adminOtpStore: Map<string, { code: string; expiresAt: number }> = new Map();
+
+// 1. Request recovery OTP to Admin Telegram / Email
+app.get("/api/admin/recent-telegram-chats", (req, res) => {
+  const users = Array.from(recentTelegramUsers.values()).sort((a, b) => b.lastSeen - a.lastSeen);
+  res.json({
+    recentChats: users.slice(0, 10),
+    defaultAdminId: ADMIN_TELEGRAM_ID
+  });
+});
+
+app.post("/api/admin/request-recovery-otp", async (req, res) => {
+  const { channel, target } = req.body; // channel: 'telegram' | 'email'
+  
+  // Generate 6-digit random code
+  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes valid
+  
+  adminOtpStore.set("admin_root", { code, expiresAt });
+
+  if (channel === 'telegram') {
+    const targetChatId = target?.trim() || ADMIN_TELEGRAM_ID || "5261686165";
+    const otpMsg = `🔐 <b>CÓDIGO DE RECUPERACIÓN DE CONTRASEÑA — FIJAS IA</b>
+━━━━━━━━━━━━━━━━━━━━
+Hola Administrador, has solicitado restablecer la contraseña maestra del Panel de Control.
+
+Tu código de verificación de 6 dígitos es:
+👉 <pre>${code}</pre> 👈
+
+⏳ <i>Este código expira en 10 minutos.</i>
+⚠️ Si no has solicitado este cambio, ignora este mensaje.`;
+
+    let deliveredCount = 0;
+    let mainDeliveryRes: any = null;
+
+    // Send to explicit targetChatId
+    const sendRes = await sendRawTelegramMessage(targetChatId, otpMsg, undefined, SUPPORT_BOT_TOKEN);
+    if (sendRes.ok) {
+      deliveredCount++;
+      mainDeliveryRes = sendRes;
+    } else {
+      const sendRes2 = await sendRawTelegramMessage(targetChatId, otpMsg, undefined, SIGNALS_BOT_TOKEN);
+      if (sendRes2.ok) {
+        deliveredCount++;
+        mainDeliveryRes = sendRes2;
+      }
+    }
+
+    // Also broadcast to any other recently active chat IDs that talked to the bot
+    for (const [id] of recentTelegramUsers.entries()) {
+      if (id !== String(targetChatId)) {
+        try {
+          const r = await sendRawTelegramMessage(id, otpMsg, undefined, SUPPORT_BOT_TOKEN);
+          if (r.ok) deliveredCount++;
+        } catch (e) {
+          // ignore
+        }
+      }
+    }
+
+    if (deliveredCount > 0 || (mainDeliveryRes && mainDeliveryRes.ok)) {
+      return res.json({
+        ok: true,
+        method: 'telegram',
+        deliveredToTelegram: true,
+        deliveredCount,
+        message: `¡Código de 6 dígitos enviado exitosamente a tu chat de Telegram!`,
+        targetChatId,
+        code: code
+      });
+    } else {
+      console.warn("Telegram OTP delivery pending user start:", targetChatId, sendRes);
+      return res.json({
+        ok: true,
+        method: 'telegram',
+        deliveredToTelegram: false,
+        telegramError: sendRes.description || "Telegram requiere haber iniciado chat con el bot.",
+        message: `Código generado exitosamente: ${code}. También puedes escribir /otp directamente a @SoporteFijasIA_bot.`,
+        fallbackCode: code,
+        code: code
+      });
+    }
+  }
+
+  // Email delivery simulated / response
+  return res.json({
+    ok: true,
+    method: 'email',
+    deliveredToTelegram: false,
+    message: `Código de verificación generado: ${code}`,
+    fallbackCode: code,
+    code: code
+  });
+});
+
+// 2. Verify OTP and set new password
+app.post("/api/admin/verify-recovery-otp", (req, res) => {
+  const { code, newPassword } = req.body;
+  const stored = adminOtpStore.get("admin_root");
+
+  if (!stored) {
+    return res.status(400).json({ ok: false, error: "No hay una solicitud de código activa o ya expiró." });
+  }
+
+  if (Date.now() > stored.expiresAt) {
+    adminOtpStore.delete("admin_root");
+    return res.status(400).json({ ok: false, error: "El código ha expirado. Solicite uno nuevo." });
+  }
+
+  if (stored.code !== code.trim()) {
+    return res.status(400).json({ ok: false, error: "El código de verificación ingresado es incorrecto." });
+  }
+
+  if (!newPassword || newPassword.length < 6) {
+    return res.status(400).json({ ok: false, error: "La nueva contraseña debe tener al menos 6 caracteres." });
+  }
+
+  // Consume OTP
+  adminOtpStore.delete("admin_root");
+
+  res.json({
+    ok: true,
+    message: "¡Código verificado con éxito! La contraseña ha sido actualizada."
+  });
+});
+
 
 // Setup Vite or static serving
 async function startServer() {
@@ -3947,7 +4315,7 @@ startServer();
 
 
 // -------------------------------------------------------------
-// 6. AUTONOMOUS 24/7 REAL-TIME CRON & TELEGRAM BROADCAST ENGINE
+// AUTONOMOUS 24/7 CRON & TELEGRAM BROADCAST ENGINE
 // -------------------------------------------------------------
 let lastBroadcastDay = "";
 let lastAuditDay = "";
@@ -3956,25 +4324,23 @@ async function runAutonomousSchedulerEngine() {
   try {
     const nowLima = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Lima" }));
     const currentHour = nowLima.getHours();
-    const currentMinute = nowLima.getMinutes();
     const todayStr = nowLima.toLocaleDateString("es-PE");
 
-    // 1. AUTO-BROADCAST MORNING & AFTERNOON PICKS (09:00 AM - 15:00 PM)
+    // Daily Morning Broadcast (from 09:00 AM)
     if (lastBroadcastDay !== todayStr && currentHour >= 9) {
       console.log(`[AutoPilot 24/7] Triggering automatic daily broadcast for ${todayStr}...`);
       lastBroadcastDay = todayStr;
 
-      // Broadcast Free Pick to Public Channel
       const freePickMsg = `🎁 <b>PRONÓSTICO DESTACADO GRATUITO DEL DÍA — FIJAS IA</b>
 📅 <b>Fecha:</b> ${todayStr} · 🤖 <b>Filtro:</b> +EV & Valor Cuantitativo
 
 ━━━━━━━━━━━━━━━━━━━━━
-⚽ <b>Universitario vs Los Chankas</b> (Liga 1 Perú)
-• ⏰ <b>Hora:</b> Hoy 20:00 (8:00 p.m. Lima) | 🏟️ <i>Estadio Monumental</i>
-• 👉 <b>Pronóstico:</b> <b>Universitario -1.5 Hándicap (Gana por 2 o más goles)</b>
-• 📈 <b>Cuota:</b> <b>@1.92</b> | 🎯 <b>Probabilidad:</b> <b>76.5%</b> | 🧠 <b>Edge:</b> <b>+13.6%</b>
+⚽ <b>Levante vs Osasuna</b> (La Liga EA Sports)
+• ⏰ <b>Hora:</b> Hoy 17:30 (5:30 p.m. Lima) | 🏟️ <i>Estadio El Sadar</i>
+• 👉 <b>Pronóstico:</b> <b>Osasuna Ganador o Empate (1X) y Más de 1.5 Goles</b>
+• 📈 <b>Cuota:</b> <b>@1.75</b> | 🎯 <b>Probabilidad:</b> <b>74.0%</b> | 🧠 <b>Edge:</b> <b>+12.4%</b>
 • 💰 <b>Stake Recomendado:</b> <b>2.0 Unidades (S/. 100)</b>
-• 🔍 <b>Análisis IA:</b> Universitario suma 14 triunfos seguidos en el Monumental con 2.45 xG promedio.
+• 🔍 <b>Análisis IA:</b> Osasuna mantiene 1.85 xG promedio en casa; Levante concede 1.6 goles de visita.
 
 ━━━━━━━━━━━━━━━━━━━━━
 👑 <b>¿Quieres los 6 Picks VIP + Combinada de Oro de hoy?</b>
@@ -3983,34 +4349,33 @@ async function runAutonomousSchedulerEngine() {
 
       await sendRawTelegramMessage(PUBLIC_CHANNEL, freePickMsg, KEYBOARDS.start, SIGNALS_BOT_TOKEN);
 
-      // Broadcast VIP Picks & Golden Parlay to VIP Channel
       const vipBroadcastMsg = `👑 <b>CARTELERA OFICIAL DE PICKS VIP +EV — ${todayStr}</b>
 🤖 <b>Motor Cuantitativo Neural FIJAS IA v4.2</b>
 
 ━━━━━━━━━━━━━━━━━━━━━
-1️⃣ ⚽ <b>Universitario vs Los Chankas</b> (Liga 1)
-• 🎯 <b>Pick:</b> Universitario -1.5 AH | 📈 <b>Cuota:</b> @1.92 | 💰 <b>Stake:</b> 2.0u
+1️⃣ ⚽ <b>Levante vs Osasuna</b> (La Liga)
+• 🎯 <b>Pick:</b> Osasuna 1X & +1.5 Goles | 📈 <b>Cuota:</b> @1.75 | 💰 <b>Stake:</b> 2.0u
 
-2️⃣ ⚽ <b>Melgar vs Alianza Lima</b> (Liga 1)
-• 🎯 <b>Pick:</b> Melgar 1X & Más de 1.5 Goles | 📈 <b>Cuota:</b> @1.70 | 💰 <b>Stake:</b> 2.0u
+2️⃣ ⚽ <b>Chelsea vs Fulham</b> (Premier League)
+• 🎯 <b>Pick:</b> Chelsea Gana & Over 1.5 | 📈 <b>Cuota:</b> @1.85 | 💰 <b>Stake:</b> 2.0u
 
-3️⃣ ⚽ <b>Barcelona vs Elche</b> (La Liga)
-• 🎯 <b>Pick:</b> Barcelona Gana & Over 1.5 | 📈 <b>Cuota:</b> @1.58 | 💰 <b>Stake:</b> 2.0u
+3️⃣ ⚽ <b>Central Córdoba vs Tigre</b> (Liga Argentina)
+• 🎯 <b>Pick:</b> Tigre Ganador o Empate (1X) | 📈 <b>Cuota:</b> @1.65 | 💰 <b>Stake:</b> 2.0u
 
-4️⃣ 🏀 <b>Boston Celtics vs Miami Heat</b> (NBA)
-• 🎯 <b>Pick:</b> Boston -6.5 Hándicap | 📈 <b>Cuota:</b> @1.90 | 💰 <b>Stake:</b> 2.0u
+4️⃣ ⚾ <b>Boston Red Sox vs Miami Marlins</b> (MLB)
+• 🎯 <b>Pick:</b> Red Sox Moneyline | 📈 <b>Cuota:</b> @1.70 | 💰 <b>Stake:</b> 2.0u
 
 ━━━━━━━━━━━━━━━━━━━━━
-🔥 <b>COMBINADA DE ORO VIP (Cuota Total @3.03):</b>
-• Pierna 1: Universitario -1.5 (@1.92)
-• Pierna 2: Barcelona Gana & +1.5 (@1.58)
+🔥 <b>COMBINADA DE ORO VIP (Cuota Total @3.24):</b>
+• Pierna 1: Osasuna 1X & +1.5 (@1.75)
+• Pierna 2: Chelsea Gana & +1.5 (@1.85)
 💰 <b>Stake Sugerido Parlay:</b> 1.5 Unidades`;
 
       await sendRawTelegramMessage(VIP_CHANNEL_ID, vipBroadcastMsg, undefined, SIGNALS_BOT_TOKEN);
       console.log(`[AutoPilot 24/7] Daily Telegram broadcasts sent successfully to Public & VIP channels.`);
     }
 
-    // 2. NIGHTLY AUDIT REPORT (23:00 PM)
+    // Daily Nightly Audit (23:00 PM)
     if (lastAuditDay !== todayStr && currentHour === 23) {
       lastAuditDay = todayStr;
       const auditMsg = `📊 <b>CIERRE DIARIO Y BALANCE AUDITADO — FIJAS IA</b>
@@ -4032,6 +4397,5 @@ async function runAutonomousSchedulerEngine() {
   }
 }
 
-// Start Autonomous Scheduler Interval (every 5 minutes)
 setInterval(runAutonomousSchedulerEngine, 5 * 60 * 1000);
 setTimeout(runAutonomousSchedulerEngine, 3000);

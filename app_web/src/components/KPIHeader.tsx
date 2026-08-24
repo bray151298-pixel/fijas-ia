@@ -6,7 +6,6 @@ import {
   Zap, 
   Cpu, 
   ShieldCheck, 
-  Sparkles,
   ArrowUpRight
 } from 'lucide-react';
 import { AlgorithmKPIs, EngineConfig } from '../types';
@@ -21,27 +20,29 @@ export const KPIHeader: React.FC<KPIHeaderProps> = ({ kpis, engineConfig, onSele
   return (
     <section className="w-full bg-[#0B101D] border-b border-slate-800/80 px-4 lg:px-8 py-4">
       <div className="max-w-7xl mx-auto">
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
           {/* KPI 1: Tasa de Acierto */}
           <div 
             id="kpi-winrate"
-            className="p-3.5 rounded-xl bg-slate-900/90 border border-slate-800/90 hover:border-emerald-500/30 transition-all group"
+            className="p-4 rounded-2xl bg-gradient-to-b from-slate-900/90 to-slate-950/80 border border-slate-800/80 hover:border-emerald-500/30 transition-all group shadow-sm"
           >
-            <div className="flex items-center justify-between text-slate-400 mb-1.5">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+            <div className="flex items-center justify-between text-slate-400 mb-2">
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
                 Tasa de Acierto
               </span>
-              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+              <div className="w-6 h-6 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+              </div>
             </div>
             <div className="flex items-baseline gap-1.5">
-              <span className="text-xl sm:text-2xl font-black text-white tracking-tight">
+              <span className="text-2xl sm:text-3xl font-black text-white tracking-tight">
                 {kpis.winRate}%
               </span>
-              <span className="text-[11px] font-semibold text-emerald-400 flex items-center">
+              <span className="text-[11px] font-bold text-emerald-400">
                 Win Rate
               </span>
             </div>
-            <p className="text-[10px] text-slate-400 mt-1 truncate">
+            <p className="text-[10px] text-slate-400 mt-1 font-medium truncate">
               Últimas 300 señales verificadas
             </p>
           </div>
@@ -49,23 +50,25 @@ export const KPIHeader: React.FC<KPIHeaderProps> = ({ kpis, engineConfig, onSele
           {/* KPI 2: Yield del Modelo */}
           <div 
             id="kpi-yield"
-            className="p-3.5 rounded-xl bg-slate-900/90 border border-slate-800/90 hover:border-emerald-500/30 transition-all group"
+            className="p-4 rounded-2xl bg-gradient-to-b from-slate-900/90 to-slate-950/80 border border-slate-800/80 hover:border-emerald-500/30 transition-all group shadow-sm"
           >
-            <div className="flex items-center justify-between text-slate-400 mb-1.5">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                Yield del Modelo
+            <div className="flex items-center justify-between text-slate-400 mb-2">
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
+                Yield Cuantitativo
               </span>
-              <TrendingUp className="w-4 h-4 text-emerald-400" />
+              <div className="w-6 h-6 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+                <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
+              </div>
             </div>
             <div className="flex items-baseline gap-1.5">
-              <span className="text-xl sm:text-2xl font-black text-emerald-400 tracking-tight">
+              <span className="text-2xl sm:text-3xl font-black text-emerald-400 tracking-tight">
                 +{kpis.roiYield}%
               </span>
-              <span className="text-[11px] font-semibold text-slate-300">
+              <span className="text-[11px] font-bold text-slate-300">
                 ROI Neto
               </span>
             </div>
-            <p className="text-[10px] text-slate-400 mt-1 truncate">
+            <p className="text-[10px] text-slate-400 mt-1 font-medium truncate">
               Flat stake 1u auditado
             </p>
           </div>
@@ -73,24 +76,26 @@ export const KPIHeader: React.FC<KPIHeaderProps> = ({ kpis, engineConfig, onSele
           {/* KPI 3: Partidos Analizados Hoy */}
           <div 
             id="kpi-matches-today"
-            className="p-3.5 rounded-xl bg-slate-900/90 border border-slate-800/90 hover:border-cyan-500/30 transition-all group"
+            className="p-4 rounded-2xl bg-gradient-to-b from-slate-900/90 to-slate-950/80 border border-slate-800/80 hover:border-cyan-500/30 transition-all group shadow-sm"
           >
-            <div className="flex items-center justify-between text-slate-400 mb-1.5">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+            <div className="flex items-center justify-between text-slate-400 mb-2">
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
                 Partidos Hoy
               </span>
-              <CalendarCheck className="w-4 h-4 text-cyan-400" />
+              <div className="w-6 h-6 rounded-lg bg-cyan-500/10 flex items-center justify-center">
+                <CalendarCheck className="w-3.5 h-3.5 text-cyan-400" />
+              </div>
             </div>
             <div className="flex items-baseline gap-1.5">
-              <span className="text-xl sm:text-2xl font-black text-white tracking-tight">
+              <span className="text-2xl sm:text-3xl font-black text-white tracking-tight">
                 {kpis.matchesAnalyzedToday}
               </span>
-              <span className="text-[11px] font-semibold text-cyan-400">
+              <span className="text-[11px] font-bold text-cyan-400">
                 Partidos
               </span>
             </div>
-            <p className="text-[10px] text-slate-400 mt-1 truncate">
-              5 Ligas calibradas en vivo
+            <p className="text-[10px] text-slate-400 mt-1 font-medium truncate">
+              Fixtures ESPN en vivo
             </p>
           </div>
 
@@ -98,50 +103,51 @@ export const KPIHeader: React.FC<KPIHeaderProps> = ({ kpis, engineConfig, onSele
           <div 
             id="kpi-ev-signals"
             onClick={onSelectSignalFilter}
-            className="p-3.5 rounded-xl bg-gradient-to-br from-emerald-950/30 to-slate-900/90 border border-emerald-500/30 hover:border-emerald-400/60 transition-all cursor-pointer group shadow-[0_0_15px_rgba(16,185,129,0.05)]"
+            className="p-4 rounded-2xl bg-gradient-to-b from-slate-900/90 to-slate-950/80 border border-slate-800/80 hover:border-emerald-500/50 transition-all group cursor-pointer shadow-sm"
           >
-            <div className="flex items-center justify-between text-emerald-400 mb-1.5">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-300 flex items-center gap-1">
+            <div className="flex items-center justify-between text-slate-400 mb-2">
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
                 Señales +EV
-                <ArrowUpRight className="w-3 h-3 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
               </span>
-              <Zap className="w-4 h-4 text-emerald-400 fill-emerald-400/20" />
+              <div className="w-6 h-6 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+                <Zap className="w-3.5 h-3.5 text-emerald-400" />
+              </div>
             </div>
             <div className="flex items-baseline gap-1.5">
-              <span className="text-xl sm:text-2xl font-black text-emerald-300 tracking-tight">
+              <span className="text-2xl sm:text-3xl font-black text-emerald-400 tracking-tight">
                 {kpis.evSignalsDetected}
               </span>
-              <span className="text-[11px] font-semibold text-emerald-400">
-                Picks de Valor
+              <span className="text-[11px] font-bold text-slate-300">
+                Detectadas
               </span>
             </div>
-            <p className="text-[10px] text-emerald-400/80 mt-1 truncate font-medium">
-              Edge promedio &gt; +7.5%
+            <p className="text-[10px] text-emerald-400/90 mt-1 font-medium flex items-center gap-0.5 truncate">
+              <span>Edge &gt; {engineConfig.minEdgeEV}%</span>
+              <ArrowUpRight className="w-3 h-3 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
             </p>
           </div>
 
-          {/* KPI 5: Estado del Motor */}
+          {/* KPI 5: Estado del Motor Cuantitativo */}
           <div 
             id="kpi-engine-status"
-            className="col-span-2 sm:col-span-1 p-3.5 rounded-xl bg-slate-900/90 border border-slate-800/90 hover:border-purple-500/30 transition-all group"
+            className="col-span-2 sm:col-span-1 p-4 rounded-2xl bg-gradient-to-b from-slate-900/90 to-slate-950/80 border border-slate-800/80 hover:border-indigo-500/30 transition-all group shadow-sm"
           >
-            <div className="flex items-center justify-between text-slate-400 mb-1.5">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                Estado del Motor
+            <div className="flex items-center justify-between text-slate-400 mb-2">
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
+                Motor Cuantitativo
               </span>
-              <Cpu className="w-4 h-4 text-purple-400" />
+              <div className="w-6 h-6 rounded-lg bg-indigo-500/10 flex items-center justify-center">
+                <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" />
+              </div>
             </div>
             <div className="flex items-center gap-2">
-              <span className="relative flex h-2.5 w-2.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-              </span>
-              <span className="text-sm font-bold text-slate-200 truncate">
-                Activo
+              <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse ring-4 ring-emerald-500/20" />
+              <span className="text-xs font-black text-white truncate">
+                {kpis.engineStatus}
               </span>
             </div>
-            <p className="text-[10px] text-slate-400 mt-1 truncate">
-              {engineConfig.mode === 'gemini' ? 'Motor Neural Cuantitativo' : 'Gateway Cuantitativo'}
+            <p className="text-[10px] text-slate-400 mt-1 font-medium truncate">
+              xG + Poisson + Kelly
             </p>
           </div>
         </div>
