@@ -1,0 +1,29 @@
+{
+  "analysis_id": "ANL-YYYYMMDD-XXX",
+  "timestamp": "2026-08-24T00:00:00Z",
+  "data_quality": {
+    "score": 95,
+    "missing_data": false,
+    "sample_size": 20
+  },
+  "model": {
+    "name": "Poisson-Kelly Neural Ensemble",
+    "version": "4.2.0"
+  },
+  "prediction": {
+    "outcome": "Selección Oficial",
+    "probability": 0.74,
+    "fair_odds": 1.35,
+    "market_odds": 1.75,
+    "edge_ev": 12.4
+  },
+  "confidence": {
+    "score": 88,
+    "level": "HIGH"
+  },
+  "risk_factors": [
+    "Factor de riesgo 1",
+    "Factor de riesgo 2"
+  ],
+  "validation_status": "PASSED"
+}
