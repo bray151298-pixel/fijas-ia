@@ -4091,19 +4091,36 @@ app.post("/api/admin/verify-recovery-otp", (req, res) => {
 });
 
 
-// Setup Vite or static serving
+// Setup bulletproof production static serving & dev fallback
 async function startServer() {
-  if (process.env.NODE_ENV !== "production") {
+  const distPath = path.join(process.cwd(), "dist");
+  const distIndexPath = path.join(distPath, "index.html");
+
+  if (fs.existsSync(distIndexPath)) {
+    console.log(`[Static] Serving production build from: ${distPath}`);
+    app.use(express.static(distPath, { index: false }));
+    app.get("*", (req, res, next) => {
+      if (req.path.startsWith("/api/")) return next();
+      res.sendFile(distIndexPath);
+    });
+  } else {
+    console.log(`[Static] Dist index not found, starting Vite development middleware...`);
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
     });
     app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
-    app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
+    app.get("*", async (req, res, next) => {
+      if (req.path.startsWith("/api/")) return next();
+      try {
+        const url = req.originalUrl;
+        const indexPath = path.resolve(process.cwd(), "index.html");
+        let template = fs.readFileSync(indexPath, "utf-8");
+        template = await vite.transformIndexHtml(url, template);
+        res.status(200).set({ "Content-Type": "text/html" }).end(template);
+      } catch (e) {
+        next(e);
+      }
     });
   }
 
