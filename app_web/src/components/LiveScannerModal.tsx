@@ -73,12 +73,49 @@ export const LiveScannerModal: React.FC<LiveScannerModalProps> = ({
   // Golden Parlay VIP state
   const [goldenParlay, setGoldenParlay] = useState<GoldenParlayVIP | null>(null);
 
-  // Auto-fetch data on open
+  // Auto-fetch data on open and poll every 15 seconds in real-time
   useEffect(() => {
-    if (isOpen) {
-      loadAllData();
-    }
+    if (!isOpen) return;
+
+    loadAllData();
+    const interval = setInterval(() => {
+      loadAllDataSilently();
+    }, 15000);
+
+    return () => clearInterval(interval);
   }, [isOpen]);
+
+  const loadAllDataSilently = async () => {
+    try {
+      const [liveRes, nextRes, parlayRes] = await Promise.all([
+        getLiveScannerMatches(),
+        getNextDayPreMatchAnalysis(),
+        getTodayGoldenParlayVIP()
+      ]);
+
+      if (liveRes.ok && liveRes.matches) {
+        setLiveMatches(liveRes.matches);
+        setSelectedLiveMatch(prev => {
+          if (!prev && liveRes.matches.length > 0) return liveRes.matches[0];
+          if (prev) {
+            const updated = liveRes.matches.find(m => m.id === prev.id);
+            return updated || (liveRes.matches.length > 0 ? liveRes.matches[0] : null);
+          }
+          return null;
+        });
+      }
+
+      if (nextRes.ok && nextRes.status) {
+        setNextDayStatus(nextRes.status);
+      }
+
+      if (parlayRes.ok && parlayRes.parlay) {
+        setGoldenParlay(parlayRes.parlay);
+      }
+    } catch (err) {
+      // silent background refresh
+    }
+  };
 
   const loadAllData = async () => {
     setLoading(true);
