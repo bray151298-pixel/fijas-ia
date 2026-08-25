@@ -11,6 +11,7 @@ import { saveStateToDisk, loadStateFromDisk } from './src/support-engine/storage
 
 import express from "express";
 import path from "path";
+import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
 import { GoogleGenAI } from "@google/genai";
