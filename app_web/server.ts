@@ -3715,11 +3715,17 @@ async function generateDynamicLiveScannerMatches(): Promise<any[]> {
   const events = await fetchLiveESPNScores();
   const dynamicMatches: any[] = [];
 
-  // EXCLUDE finished matches ('post') - The Live In-Play scanner only tracks matches currently IN-PLAY ('in') or UPCOMING TODAY ('pre')
-  const activeEvents = events.filter(ev => ev.state === 'in' || ev.state === 'pre');
-  const eventsToProcess = activeEvents.length > 0 ? activeEvents : events.filter(ev => ev.state === 'in');
+  // STRICT FILTER: ONLY matches CURRENTLY PLAYING IN-PLAY ('in') - Exclude future dates (e.g. Aug 28th) and finished games
+  const liveOnlyEvents = events.filter(ev => {
+    if (ev.state === 'in') return true;
+    // If not live, exclude any match that has a future date in statusDetail (e.g. "Fri, August 28th")
+    const isFutureDay = /(Mon|Tue|Wed|Thu|Fri|Sat|Sun),\s+[A-Za-z]+\s+\d+/i.test(ev.statusDetail);
+    if (isFutureDay) return false;
+    // Allow only pre-match for TODAY
+    return ev.state === 'pre' && !ev.statusDetail.toLowerCase().includes('final');
+  });
 
-  for (const ev of eventsToProcess) {
+  for (const ev of liveOnlyEvents) {
     const isLive = ev.state === 'in';
     const isFinal = false;
     const scoreStr = `${ev.scoreHome} - ${ev.scoreAway}`;
