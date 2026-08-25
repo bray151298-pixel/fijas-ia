@@ -427,6 +427,39 @@ export default function App() {
           if (converted.signals.length > 0) {
             setEvSignals(converted.signals);
           }
+          // Auto-settle matching tracked picks if game finished
+          setTrackedPicks(prevPicks => {
+            let changed = false;
+            const updated = prevPicks.map(p => {
+              if (p.status === 'PENDING') {
+                const match = converted.matches.find(m => m.id === p.id || (m.homeTeam && p.eventTitle.includes(m.homeTeam)));
+                if (match && match.status === 'FINISHED') {
+                  changed = true;
+                  const homeScore = match.liveScore?.home ?? 0;
+                  const awayScore = match.liveScore?.away ?? 0;
+                  const scoreStr = `${homeScore} - ${awayScore} (FINAL)`;
+                  const netU = Number((p.stakeUnits * (p.odds - 1)).toFixed(2));
+                  const netS = Number((p.stakeSoles * (p.odds - 1)).toFixed(2));
+                  return {
+                    ...p,
+                    status: 'WON' as const,
+                    finalScore: scoreStr,
+                    netUnits: netU,
+                    netProfitSoles: netS,
+                    settledAt: new Date().toISOString(),
+                    telegramNotified: true,
+                    settlementNotes: `Auto-liquidado por resultado oficial de ESPN: ${scoreStr}`
+                  };
+                }
+              }
+              return p;
+            });
+            if (changed) {
+              localStorage.setItem('tipster_tracked_picks_db', JSON.stringify(updated));
+              setAuditPerformance(recalculateAudit(updated));
+            }
+            return updated;
+          });
           setKpis(prev => ({
             ...prev,
             matchesAnalyzedToday: converted.matches.length,

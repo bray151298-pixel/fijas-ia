@@ -49,6 +49,24 @@ export const PicksTrackingDatabaseModal: React.FC<PicksTrackingDatabaseModalProp
   onAddTrackedPick,
   onOpenAIDiagnostic
 }) => {
+  const [localPicks, setLocalPicks] = useState<TrackedPick[]>(trackedPicks);
+
+  React.useEffect(() => {
+    setLocalPicks(trackedPicks);
+  }, [trackedPicks]);
+
+  // Refresh from server on open
+  React.useEffect(() => {
+    if (!isOpen) return;
+    fetch('/api/picks/database')
+      .then(res => res.json())
+      .then(data => {
+        if (data.ok && data.picks && Array.isArray(data.picks)) {
+          setLocalPicks(data.picks);
+        }
+      })
+      .catch(() => {});
+  }, [isOpen]);
   const [activeTab, setActiveTab] = useState<'database' | 'audit_charts' | 'new_pick'>('database');
   const [selectedSportFilter, setSelectedSportFilter] = useState<SportType | 'all'>('all');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<'ALL' | 'PENDING' | 'WON' | 'LOST' | 'PUSH'>('ALL');
@@ -79,7 +97,7 @@ export const PicksTrackingDatabaseModal: React.FC<PicksTrackingDatabaseModalProp
   if (!isOpen) return null;
 
   // Filtered picks
-  const filteredPicks = trackedPicks.filter(pick => {
+  const filteredPicks = localPicks.filter(pick => {
     if (selectedSportFilter !== 'all' && pick.sport !== selectedSportFilter) return false;
     if (selectedStatusFilter !== 'ALL' && pick.status !== selectedStatusFilter) return false;
     if (searchQuery.trim()) {
