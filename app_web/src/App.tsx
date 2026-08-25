@@ -238,7 +238,15 @@ export default function App() {
   const [autoPilot, setAutoPilot] = useState<AutoPilotState>(() => {
     try {
       const saved = localStorage.getItem('tipster_autopilot_state');
-      if (saved) return JSON.parse(saved);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return {
+          ...INITIAL_AUTOPILOT_STATE,
+          ...parsed,
+          dailyVolume: { ...INITIAL_AUTOPILOT_STATE.dailyVolume, ...(parsed.dailyVolume || {}) },
+          triggers: { ...INITIAL_AUTOPILOT_STATE.triggers, ...(parsed.triggers || {}) }
+        };
+      }
     } catch (e) {
       console.warn('Failed to load autopilot state');
     }
@@ -249,7 +257,7 @@ export default function App() {
   const [bankrollSettings, setBankrollSettings] = useState<BankrollSettings>(() => {
     try {
       const saved = localStorage.getItem('tipster_bankroll_settings');
-      if (saved) return JSON.parse(saved);
+      if (saved) return { ...DEFAULT_BANKROLL_SETTINGS, ...JSON.parse(saved) };
     } catch (e) {
       console.warn('Failed to load bankroll settings from storage');
     }
@@ -265,13 +273,22 @@ export default function App() {
   const [parlayLegs, setParlayLegs] = useState<ParlayLeg[]>([]);
 
   // Engine Configuration State
-  const [engineConfig, setEngineConfig] = useState<EngineConfig>(DEFAULT_ENGINE_CONFIG);
+  const [engineConfig, setEngineConfig] = useState<EngineConfig>(() => {
+    try {
+      const saved = localStorage.getItem('tipster_engine_config');
+      if (saved) return { ...DEFAULT_ENGINE_CONFIG, ...JSON.parse(saved) };
+    } catch (e) {}
+    return DEFAULT_ENGINE_CONFIG;
+  });
 
   // Multi-Sport Picks Tracking & Audit Database State
   const [trackedPicks, setTrackedPicks] = useState<TrackedPick[]>(() => {
     try {
       const saved = localStorage.getItem('tipster_tracked_picks_db');
-      if (saved) return JSON.parse(saved);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
     } catch (e) {
       console.warn('Failed to load tracked picks');
     }
