@@ -657,7 +657,7 @@ export const AutoPilotSchedulerModal: React.FC<AutoPilotSchedulerModalProps> = (
                         </span>
                       </div>
                       <p className="text-[11px] text-slate-400 mt-1.5 leading-snug">
-                        Universitario vs Chankas, Man City, Bayern Múnich, Real Madrid y Cristal vs Melgar.
+                        Premier League, La Liga EA Sports y Liga Argentina (Chelsea, Osasuna, Tigre).
                       </p>
                     </div>
                     <div className="flex items-center gap-1.5">
@@ -692,7 +692,7 @@ export const AutoPilotSchedulerModal: React.FC<AutoPilotSchedulerModalProps> = (
                         </span>
                       </div>
                       <p className="text-[11px] text-slate-400 mt-1.5 leading-snug">
-                        Celtics vs Heat, Lakers vs Warriors (Over 228.5) y Denver Nuggets (Moneyline).
+                        WNBA y Torneos Internacionales (Minnesota Lynx vs Golden State Valkyries).
                       </p>
                     </div>
                     <div className="flex items-center gap-1.5">
@@ -727,7 +727,7 @@ export const AutoPilotSchedulerModal: React.FC<AutoPilotSchedulerModalProps> = (
                         </span>
                       </div>
                       <p className="text-[11px] text-slate-400 mt-1.5 leading-snug">
-                        Carlos Alcaraz vs Jannik Sinner y Jannik Sinner vs Alex de Minaur.
+                        Grand Slam y Circuito ATP/WTA Masters 1000 en curso.
                       </p>
                     </div>
                     <div className="flex items-center gap-1.5">
