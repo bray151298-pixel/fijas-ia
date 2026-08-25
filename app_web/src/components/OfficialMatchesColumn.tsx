@@ -141,9 +141,23 @@ export const OfficialMatchesColumn: React.FC<OfficialMatchesColumnProps> = ({
                     </span>
                   )}
                 </div>
-                <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
-                  <Clock className="w-3 h-3 text-rose-400" />
-                  <span className="font-semibold text-slate-200">{match.date} • {match.time} UTC-5</span>
+                <div className="flex items-center gap-1.5 text-[11px]">
+                  {match.status === 'FINISHED' ? (
+                    <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 font-extrabold text-[10px] border border-emerald-500/40 flex items-center gap-1">
+                      <span>✅ FINALIZADO</span>
+                      {match.liveScore && <span className="font-mono">({match.liveScore.home} - {match.liveScore.away})</span>}
+                    </span>
+                  ) : match.status === 'LIVE' ? (
+                    <span className="px-2 py-0.5 rounded-md bg-red-500/20 text-red-300 font-extrabold text-[10px] border border-red-500/40 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping"></span>
+                      <span>EN VIVO {match.time}</span>
+                    </span>
+                  ) : (
+                    <div className="flex items-center gap-1 text-slate-400">
+                      <Clock className="w-3 h-3 text-rose-400" />
+                      <span className="font-semibold text-slate-200">{match.date} • {match.time} (Lima)</span>
+                    </div>
+                  )}
                 </div>
               </div>
 
