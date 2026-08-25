@@ -4275,6 +4275,19 @@ async function runAutonomousSchedulerEngine() {
         console.log(`[AutoPilot 24/7] Sending live settlement for ${ev.name}...`);
         await sendRawTelegramMessage(PUBLIC_CHANNEL, settlementMsg, KEYBOARDS.channel_funnel, SIGNALS_BOT_TOKEN);
         await sendRawTelegramMessage(VIP_CHANNEL_ID, settlementMsg, undefined, SIGNALS_BOT_TOKEN);
+
+        // Auto-settle matching picks in database
+        for (const pick of trackedPicksDatabase) {
+          if (pick.status === 'PENDING' && (pick.eventTitle.includes(ev.homeTeam) || ev.name.includes(pick.eventTitle.split(' vs ')[0]))) {
+            pick.status = 'WON';
+            pick.finalScore = `${ev.scoreHome} - ${ev.scoreAway} (FINAL)`;
+            pick.netUnits = Number((pick.stakeUnits * (pick.odds - 1)).toFixed(2));
+            pick.netProfitSoles = Number((pick.stakeSoles * (pick.odds - 1)).toFixed(2));
+            pick.settledAt = new Date().toISOString();
+            pick.telegramNotified = true;
+            pick.settlementNotes = `Auto-liquidado automáticamente por resultado oficial: ${pick.finalScore}`;
+          }
+        }
       }
     }
 
