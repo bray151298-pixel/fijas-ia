@@ -156,7 +156,7 @@ export const OfficialMatchesColumn: React.FC<OfficialMatchesColumnProps> = ({
                       {match.homeTeam}
                     </span>
                     <span className="text-[10px] font-bold text-emerald-400 px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20">
-                      {match.probabilities.home}%
+                      {match.probabilities?.home ?? 50}%
                     </span>
                   </div>
 
@@ -167,7 +167,7 @@ export const OfficialMatchesColumn: React.FC<OfficialMatchesColumnProps> = ({
                   {/* Away Team */}
                   <div className="flex-1 flex items-center justify-end gap-2 text-right">
                     <span className="text-[10px] font-bold text-cyan-400 px-1.5 py-0.5 rounded bg-cyan-500/10 border border-cyan-500/20">
-                      {match.probabilities.away}%
+                      {match.probabilities?.away ?? 50}%
                     </span>
                     <span className="font-extrabold text-sm sm:text-base text-white truncate">
                       {match.awayTeam}
@@ -179,18 +179,18 @@ export const OfficialMatchesColumn: React.FC<OfficialMatchesColumnProps> = ({
                 <div className="w-full h-1.5 rounded-full bg-slate-800 flex overflow-hidden">
                   <div 
                     className="bg-emerald-500 h-full transition-all" 
-                    style={{ width: `${match.probabilities.home}%` }} 
-                    title={`Victoria ${match.homeTeam}: ${match.probabilities.home}%`}
+                    style={{ width: `${match.probabilities?.home ?? 50}%` }} 
+                    title={`Victoria ${match.homeTeam}: ${match.probabilities?.home ?? 50}%`}
                   />
                   <div 
                     className="bg-slate-500 h-full transition-all" 
-                    style={{ width: `${match.probabilities.draw}%` }} 
-                    title={`Empate: ${match.probabilities.draw}%`}
+                    style={{ width: `${match.probabilities?.draw ?? 25}%` }} 
+                    title={`Empate: ${match.probabilities?.draw ?? 25}%`}
                   />
                   <div 
                     className="bg-cyan-500 h-full transition-all" 
-                    style={{ width: `${match.probabilities.away}%` }} 
-                    title={`Victoria ${match.awayTeam}: ${match.probabilities.away}%`}
+                    style={{ width: `${match.probabilities?.away ?? 50}%` }} 
+                    title={`Victoria ${match.awayTeam}: ${match.probabilities?.away ?? 50}%`}
                   />
                 </div>
 
@@ -236,9 +236,9 @@ export const OfficialMatchesColumn: React.FC<OfficialMatchesColumnProps> = ({
                         league: match.league,
                         market: 'Ganador del Partido',
                         selection: `Gana ${match.homeTeam} (Local)`,
-                        odds: match.odds.home,
-                        modelProb: match.probabilities.home,
-                        edge: Number((((match.odds.home / (100 / match.probabilities.home)) - 1) * 100).toFixed(1)),
+                        odds: match.odds?.home ?? 2.0,
+                        modelProb: match.probabilities?.home ?? 50,
+                        edge: Number(((((match.odds?.home ?? 2.0) / (100 / (match.probabilities?.home ?? 50))) - 1) * 100).toFixed(1)),
                         date: match.date,
                         time: match.time
                       })}
@@ -249,7 +249,7 @@ export const OfficialMatchesColumn: React.FC<OfficialMatchesColumnProps> = ({
                         Gana {match.homeTeam.split(' ')[0]}
                       </span>
                       <span className="font-black text-white group-hover:text-rose-300 text-sm">
-                        @{match.odds.home}
+                        @{match.odds?.home ?? 2.0}
                       </span>
                     </button>
 
@@ -263,9 +263,9 @@ export const OfficialMatchesColumn: React.FC<OfficialMatchesColumnProps> = ({
                         league: match.league,
                         market: 'Resultado del Partido',
                         selection: 'Empate',
-                        odds: match.odds.draw,
-                        modelProb: match.probabilities.draw,
-                        edge: Number((((match.odds.draw / (100 / match.probabilities.draw)) - 1) * 100).toFixed(1)),
+                        odds: match.odds?.draw ?? 3.0,
+                        modelProb: match.probabilities?.draw ?? 25,
+                        edge: Number(((((match.odds?.draw ?? 3.0) / (100 / (match.probabilities?.draw ?? 25))) - 1) * 100).toFixed(1)),
                         date: match.date,
                         time: match.time
                       })}
@@ -276,7 +276,7 @@ export const OfficialMatchesColumn: React.FC<OfficialMatchesColumnProps> = ({
                         Empate
                       </span>
                       <span className="font-black text-white group-hover:text-rose-300 text-sm">
-                        @{match.odds.draw}
+                        @{match.odds?.draw ?? 3.0}
                       </span>
                     </button>
 
@@ -290,9 +290,9 @@ export const OfficialMatchesColumn: React.FC<OfficialMatchesColumnProps> = ({
                         league: match.league,
                         market: 'Ganador del Partido',
                         selection: `Gana ${match.awayTeam} (Visitante)`,
-                        odds: match.odds.away,
-                        modelProb: match.probabilities.away,
-                        edge: Number((((match.odds.away / (100 / match.probabilities.away)) - 1) * 100).toFixed(1)),
+                        odds: match.odds?.away ?? 2.0,
+                        modelProb: match.probabilities?.away ?? 50,
+                        edge: Number(((((match.odds?.away ?? 2.0) / (100 / (match.probabilities?.away ?? 50))) - 1) * 100).toFixed(1)),
                         date: match.date,
                         time: match.time
                       })}
@@ -303,7 +303,7 @@ export const OfficialMatchesColumn: React.FC<OfficialMatchesColumnProps> = ({
                         Gana {match.awayTeam.split(' ')[0]}
                       </span>
                       <span className="font-black text-white group-hover:text-rose-300 text-sm">
-                        @{match.odds.away}
+                        @{match.odds?.away ?? 2.0}
                       </span>
                     </button>
                   </div>

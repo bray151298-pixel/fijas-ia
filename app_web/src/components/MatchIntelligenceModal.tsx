@@ -118,10 +118,10 @@ export const MatchIntelligenceModal: React.FC<MatchIntelligenceModalProps> = ({
   } : {
     market: '1X2 - Ganador',
     selection: match.homeTeam,
-    marketOdds: match.odds.home,
-    fairOdds: Number((100 / match.probabilities.home).toFixed(2)),
-    edgePercent: Number((((match.odds.home / (100 / match.probabilities.home)) - 1) * 100).toFixed(1)),
-    modelProbability: match.probabilities.home,
+    marketOdds: match.odds?.home ?? 2.0,
+    fairOdds: Number((100 / (match.probabilities?.home ?? 50)).toFixed(2)),
+    edgePercent: Number((((match.odds?.home ?? 2.0 / (100 / (match.probabilities?.home ?? 50))) - 1) * 100).toFixed(1)),
+    modelProbability: match.probabilities?.home ?? 50,
     recommendedStake: '+1.5u',
     verdict: 'Discrepancia detectada en la probabilidad del modelo vs cuota de mercado.'
   });
@@ -183,10 +183,10 @@ export const MatchIntelligenceModal: React.FC<MatchIntelligenceModalProps> = ({
                 </h1>
                 <div className="flex items-center gap-2 mt-0.5">
                   <span className="text-xs font-extrabold text-emerald-400 px-2 py-0.5 rounded-md bg-emerald-500/10 border border-emerald-500/20">
-                    {match.probabilities.home}% Prob. Modelo
+                    {match.probabilities?.home ?? 50}% Prob. Modelo
                   </span>
                   <span className="text-xs text-slate-400">
-                    Cuota @{match.odds.home}
+                    Cuota @{match.odds?.home ?? 2.0}
                   </span>
                 </div>
               </div>
@@ -198,7 +198,7 @@ export const MatchIntelligenceModal: React.FC<MatchIntelligenceModalProps> = ({
                 VS
               </span>
               <span className="text-[10px] text-slate-400 font-bold mt-1">
-                Empate: {match.probabilities.draw}% (@{match.odds.draw})
+                Empate: {match.probabilities?.draw ?? 25}% (@{match.odds?.draw ?? 3.0})
               </span>
             </div>
 
@@ -213,10 +213,10 @@ export const MatchIntelligenceModal: React.FC<MatchIntelligenceModalProps> = ({
                 </h1>
                 <div className="flex items-center justify-end gap-2 mt-0.5">
                   <span className="text-xs text-slate-400">
-                    Cuota @{match.odds.away}
+                    Cuota @{match.odds?.away ?? 2.0}
                   </span>
                   <span className="text-xs font-extrabold text-cyan-400 px-2 py-0.5 rounded-md bg-cyan-500/10 border border-cyan-500/20">
-                    {match.probabilities.away}% Prob. Modelo
+                    {match.probabilities?.away ?? 50}% Prob. Modelo
                   </span>
                 </div>
               </div>
@@ -391,13 +391,13 @@ export const MatchIntelligenceModal: React.FC<MatchIntelligenceModalProps> = ({
                   <div className="flex justify-between text-xs font-semibold text-slate-300">
                     <span>1X2 (Resultado Final)</span>
                     <span className="text-slate-400">
-                      {match.homeTeam}: {match.probabilities.home}% | Empate: {match.probabilities.draw}% | {match.awayTeam}: {match.probabilities.away}%
+                      {match.homeTeam}: {match.probabilities?.home ?? 50}% | Empate: {match.probabilities?.draw ?? 25}% | {match.awayTeam}: {match.probabilities?.away ?? 50}%
                     </span>
                   </div>
                   <div className="h-3 rounded-full bg-slate-950 flex overflow-hidden border border-slate-800">
-                    <div className="bg-emerald-500 h-full" style={{ width: `${match.probabilities.home}%` }} title={`1: ${match.probabilities.home}%`} />
-                    <div className="bg-slate-500 h-full" style={{ width: `${match.probabilities.draw}%` }} title={`X: ${match.probabilities.draw}%`} />
-                    <div className="bg-cyan-500 h-full" style={{ width: `${match.probabilities.away}%` }} title={`2: ${match.probabilities.away}%`} />
+                    <div className="bg-emerald-500 h-full" style={{ width: `${match.probabilities?.home ?? 50}%` }} title={`1: ${match.probabilities?.home ?? 50}%`} />
+                    <div className="bg-slate-500 h-full" style={{ width: `${match.probabilities?.draw ?? 25}%` }} title={`X: ${match.probabilities?.draw ?? 25}%`} />
+                    <div className="bg-cyan-500 h-full" style={{ width: `${match.probabilities?.away ?? 50}%` }} title={`2: ${match.probabilities?.away ?? 50}%`} />
                   </div>
                 </div>
 
