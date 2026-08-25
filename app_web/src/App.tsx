@@ -196,12 +196,12 @@ const INITIAL_AUTOPILOT_STATE: AutoPilotState = {
       type: 'live_settlement',
       title: '✅ Disparador Post-Partido: Liquidación Oficial',
       message: `✅ ¡PRONÓSTICO GANADO (+1.56 Unidades)! [Marcador Final: 3 - 1 (FINAL)]
-🏆 Partido: Man City vs Bournemouth
-🎯 Selección: Man City Gana y Más de 2.5 Goles
-📈 Cuota Cerrada: @1.78
+🏆 Partido: Levante vs Osasuna
+🎯 Selección: Osasuna 1X & Menos de 3.5 Goles
+📈 Cuota Cerrada: @1.75
 🏦 Bankroll auditado y sumado en vivo.`,
       telegramStatus: 'SENT',
-      metrics: { result: 'GANADA', settledMatch: 'Man City vs Bournemouth' }
+      metrics: { result: 'GANADA', settledMatch: 'Levante vs Osasuna' }
     }
   ]
 };

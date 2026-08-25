@@ -1093,7 +1093,7 @@ export const AutoPilotSchedulerModal: React.FC<AutoPilotSchedulerModalProps> = (
                     🔥 COMBINADA DE ORO DEL DÍA — FIJAS IA (PARLAY VIP)
                   </div>
                   <div className="space-y-1.5 text-slate-200 text-[11px]">
-                    <div>1️⃣ <b>Universitario vs Los Chankas:</b> Universitario Ganador Directo @1.34 (Hoy 18:30 Lima)</div>
+                    <div>1️⃣ <b>Fulham vs Chelsea:</b> Chelsea Ganador & Más de 1.5 Goles @1.85 (Hoy 15:00 Lima)</div>
                     <div>2️⃣ <b>Elche vs Barcelona:</b> Barcelona Ganador Directo @1.38 (Hoy 14:30 Lima)</div>
                     <div>3️⃣ <b>LA Dodgers vs Pirates:</b> Dodgers Ganador ML @1.42 (Hoy 15:10 Lima)</div>
                   </div>
