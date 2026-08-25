@@ -135,6 +135,8 @@ export const EVSignalsColumn: React.FC<EVSignalsColumnProps> = ({
       {/* Signals List */}
       <div className="space-y-3.5 overflow-y-auto pr-0.5">
         {filteredSignals.map((signal) => {
+          const match = matches.find(m => m.id === signal.matchId || signal.id.includes(m.id) || (m.homeTeam && signal.matchTitle.includes(m.homeTeam)));
+          const isFinished = match?.status === 'FINISHED';
           const isAdded = addedSignalIds.includes(signal.id);
           const stakeMultiplier = getMultiplier(signal.stake);
           const stakeSoles = (bankrollSettings.unitValueSoles * stakeMultiplier).toFixed(0);
@@ -167,9 +169,23 @@ export const EVSignalsColumn: React.FC<EVSignalsColumnProps> = ({
                     </span>
                   )}
                 </div>
-                <div className="flex items-center gap-1 text-[11px] text-slate-400 font-medium">
-                  <Clock className="w-3 h-3" />
-                  <span>{signal.timeToKickoff}</span>
+                <div className="flex items-center gap-1 text-[11px]">
+                  {match?.status === 'FINISHED' ? (
+                    <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 font-extrabold text-[10px] border border-emerald-500/40 flex items-center gap-1">
+                      <span>✅ FINALIZADO</span>
+                      {match.liveScore && <span className="font-mono">({match.liveScore.home} - {match.liveScore.away})</span>}
+                    </span>
+                  ) : match?.status === 'LIVE' ? (
+                    <span className="px-2 py-0.5 rounded-md bg-red-500/20 text-red-300 font-extrabold text-[10px] border border-red-500/40 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping"></span>
+                      <span>EN VIVO</span>
+                    </span>
+                  ) : (
+                    <div className="flex items-center gap-1 text-slate-400 font-medium">
+                      <Clock className="w-3 h-3 text-rose-400" />
+                      <span>{signal.timeToKickoff}</span>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -210,6 +226,18 @@ export const EVSignalsColumn: React.FC<EVSignalsColumnProps> = ({
                   </div>
                 </div>
               </div>
+
+              {isFinished && (
+                <div className="p-2.5 rounded-xl bg-gradient-to-r from-emerald-950/60 to-slate-900 border border-emerald-500/50 flex items-center justify-between text-xs font-bold text-emerald-300 shadow-inner">
+                  <div className="flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                    <span>¡PRONÓSTICO COBRADO Y AUDITADO!</span>
+                  </div>
+                  <span className="font-mono font-black text-emerald-400">
+                    +{netProfitSoles > 0 ? `S/. ${netProfitSoles}` : '+1.5u'}
+                  </span>
+                </div>
+              )}
 
               {/* 3: Simple & Transparent Stake Explanation */}
               <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800/90 space-y-1.5">
