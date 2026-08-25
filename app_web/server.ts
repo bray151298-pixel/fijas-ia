@@ -3752,11 +3752,26 @@ async function generateDynamicLiveScannerMatches(): Promise<any[]> {
 
     const homeScoreNum = parseInt(ev.scoreHome, 10) || 0;
     const awayScoreNum = parseInt(ev.scoreAway, 10) || 0;
-    const totalGoals = homeScoreNum + awayScoreNum;
+    const totalPointsOrGoals = homeScoreNum + awayScoreNum;
 
     const pressureIndex = isLive ? Math.min(95, 65 + (minute % 30)) : (isFinal ? 85 : 50);
     const liveOdds = Number((1.65 + (minute * 0.005)).toFixed(2));
     const edgeEV = Number((10.5 + ((pressureIndex - 60) * 0.2)).toFixed(1));
+
+    // Dynamic Multi-Sport Market Selection
+    let liveMarket = 'Goles Totales / Ventaja +EV en Vivo';
+    let liveSelection = `${ev.homeTeam} 1X o +${(totalPointsOrGoals + 0.5).toFixed(1)} Goles`;
+    let reasonText = `Encuentro en desarrollo (${period}). Presión ofensiva sostenida con ${ev.homeTeam} generando peligro.`;
+
+    if (sportType === 'BASEBALL') {
+      liveMarket = 'Línea de Dinero (Moneyline) / Total Carreras';
+      liveSelection = `${ev.homeTeam} Ganador ML o Más de ${(totalPointsOrGoals + 1.5).toFixed(1)} Carreras`;
+      reasonText = `Juego en desarrollo (${period}). Rotación de lanzadores y consistencia en bateo favorecen a ${ev.homeTeam}.`;
+    } else if (sportType === 'BASKETBALL') {
+      liveMarket = 'Hándicap de Puntos / Total Over en Vivo';
+      liveSelection = `${ev.homeTeam} Spread o Más de ${(totalPointsOrGoals + 8.5).toFixed(1)} Puntos`;
+      reasonText = `Duelo en curso (${period}). Eficiencia en tiros de campo y control de rebotes para ${ev.homeTeam}.`;
+    }
 
     dynamicMatches.push({
       id: `live-espn-${ev.id}`,
@@ -3784,16 +3799,14 @@ async function generateDynamicLiveScannerMatches(): Promise<any[]> {
         cornersHome: 5,
         cornersAway: 3
       },
-      liveMarket: isFinal ? 'Marcador Final Liquidado' : 'Goles Totales / Ventaja +EV en Vivo',
-      liveSelection: isFinal ? `Resultado Oficial: ${scoreStr}` : `${ev.homeTeam} 1X o +${(totalGoals + 0.5).toFixed(1)} Goles`,
+      liveMarket,
+      liveSelection,
       preMatchOdds: 1.45,
       liveOdds: liveOdds,
       fairOdds: Number((liveOdds * 0.85).toFixed(2)),
       liveEdgeEV: edgeEV,
       urgencyLevel: isLive ? (minute > 60 ? 'CRÍTICA' : 'ALTA') : 'MEDIA',
-      reasonWhyLiveValue: isFinal 
-        ? `Partido finalizado con marcador ${scoreStr}. Liquidación auditada por el motor cuantitativo.`
-        : `Encuentro en desarrollo (${period} - ${minute}'). Presión ofensiva sostenida con ${ev.homeTeam} generando peligro en área rival.`,
+      reasonWhyLiveValue: reasonText,
       status: isFinal ? 'SETTLED_WON' : (isLive ? 'SIGNAL_TRIGGERED' : 'PENDING'),
       telegramBroadcastedAt: new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }),
       netUnitsGained: 1.50

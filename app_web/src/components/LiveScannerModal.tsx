@@ -476,7 +476,7 @@ export const LiveScannerModal: React.FC<LiveScannerModalProps> = ({
                             {selectedLiveMatch.currentScore}
                           </div>
                           <span className="text-xs font-semibold text-red-400 bg-red-500/10 px-2 py-0.5 rounded border border-red-500/20">
-                            Minuto {selectedLiveMatch.currentMinute}'
+                            {selectedLiveMatch.sport === 'BASEBALL' ? selectedLiveMatch.period : (selectedLiveMatch.sport === 'BASKETBALL' ? selectedLiveMatch.period : `Minuto ${selectedLiveMatch.currentMinute}'`)}
                           </span>
                         </div>
                       </div>
@@ -502,25 +502,33 @@ export const LiveScannerModal: React.FC<LiveScannerModalProps> = ({
 
                         <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 pt-2 text-center text-xs">
                           <div className="p-2 bg-slate-800/60 rounded-lg">
-                            <span className="text-slate-400 block text-[10px]">xG Total</span>
+                            <span className="text-slate-400 block text-[10px]">
+                              {selectedLiveMatch.sport === 'BASEBALL' ? 'Carreras Proyectadas' : (selectedLiveMatch.sport === 'BASKETBALL' ? 'Puntos xG' : 'xG Total')}
+                            </span>
                             <span className="font-mono font-bold text-emerald-400">
-                              {(selectedLiveMatch.stats.xGHome + selectedLiveMatch.stats.xGAway).toFixed(2)}
+                              {(selectedLiveMatch.stats.xGHome + selectedLiveMatch.stats.xGAway).toFixed(1)}
                             </span>
                           </div>
                           <div className="p-2 bg-slate-800/60 rounded-lg">
-                            <span className="text-slate-400 block text-[10px]">Tiros al Arco</span>
+                            <span className="text-slate-400 block text-[10px]">
+                              {selectedLiveMatch.sport === 'BASEBALL' ? 'Hits Conectados' : (selectedLiveMatch.sport === 'BASKETBALL' ? 'Tiros al Aro' : 'Tiros al Arco')}
+                            </span>
                             <span className="font-mono font-bold text-white">
                               {selectedLiveMatch.stats.homeShotsOnTarget + selectedLiveMatch.stats.awayShotsOnTarget}
                             </span>
                           </div>
                           <div className="p-2 bg-slate-800/60 rounded-lg">
-                            <span className="text-slate-400 block text-[10px]">Ataques Peligrosos</span>
+                            <span className="text-slate-400 block text-[10px]">
+                              {selectedLiveMatch.sport === 'BASEBALL' ? 'Turnos de Bateo' : (selectedLiveMatch.sport === 'BASKETBALL' ? 'Posesiones Ofensivas' : 'Ataques Peligrosos')}
+                            </span>
                             <span className="font-mono font-bold text-amber-400">
                               {selectedLiveMatch.stats.dangerousAttacksHome + selectedLiveMatch.stats.dangerousAttacksAway}
                             </span>
                           </div>
                           <div className="p-2 bg-slate-800/60 rounded-lg">
-                            <span className="text-slate-400 block text-[10px]">Posesión</span>
+                            <span className="text-slate-400 block text-[10px]">
+                              {selectedLiveMatch.sport === 'BASEBALL' ? 'Control de Pitcheo' : (selectedLiveMatch.sport === 'BASKETBALL' ? 'Efectividad de Tiro' : 'Posesión')}
+                            </span>
                             <span className="font-mono font-bold text-slate-300">
                               {selectedLiveMatch.stats.possessionHome}% - {selectedLiveMatch.stats.possessionAway}%
                             </span>
