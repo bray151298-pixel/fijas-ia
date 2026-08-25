@@ -4159,9 +4159,40 @@ startServer();
 // -------------------------------------------------------------
 // AUTONOMOUS 24/7 LIVE ESPN TRACKER, BROADCAST & SETTLEMENT ENGINE
 // -------------------------------------------------------------
+const SCHEDULER_STATE_FILE = path.join(process.cwd(), "scheduler_state.json");
+
 let lastBroadcastDay = "";
 let lastAuditDay = "";
 const settledMatchesRegistry = new Set<string>();
+let isFirstSchedulerRun = true;
+
+// Load persistent scheduler state to prevent duplicate broadcasts/settlements across restarts
+try {
+  if (fs.existsSync(SCHEDULER_STATE_FILE)) {
+    const savedState = JSON.parse(fs.readFileSync(SCHEDULER_STATE_FILE, "utf-8"));
+    if (savedState.lastBroadcastDay) lastBroadcastDay = savedState.lastBroadcastDay;
+    if (savedState.lastAuditDay) lastAuditDay = savedState.lastAuditDay;
+    if (Array.isArray(savedState.settledMatches)) {
+      savedState.settledMatches.forEach((id: string) => settledMatchesRegistry.add(id));
+    }
+    console.log(`[Scheduler] Loaded state from disk. BroadcastDay: ${lastBroadcastDay}, SettledCount: ${settledMatchesRegistry.size}`);
+  }
+} catch (e) {
+  console.warn("[Scheduler] Could not load scheduler state from disk", e);
+}
+
+function saveSchedulerState() {
+  try {
+    const stateObj = {
+      lastBroadcastDay,
+      lastAuditDay,
+      settledMatches: Array.from(settledMatchesRegistry)
+    };
+    fs.writeFileSync(SCHEDULER_STATE_FILE, JSON.stringify(stateObj, null, 2), "utf-8");
+  } catch (e) {
+    console.warn("[Scheduler] Could not save state to disk", e);
+  }
+}
 
 async function fetchLiveESPNScores() {
   const activeEvents: Array<{
@@ -4231,13 +4262,27 @@ async function runAutonomousSchedulerEngine() {
     const currentMinute = nowLima.getMinutes();
     const todayStr = nowLima.toLocaleDateString("es-PE");
 
-    // 1. LIVE SCORES SCAN & IN-PLAY / POST-MATCH SETTLEMENT (Runs every 5 minutes)
+    // 1. LIVE SCORES SCAN & IN-PLAY / POST-MATCH SETTLEMENT (Runs every 3 minutes)
     const liveEvents = await fetchLiveESPNScores();
     
-    // Check finished matches to send instant settlement
+    // On cold boot/restart: seed already finished matches so we do NOT spam old results
+    if (isFirstSchedulerRun) {
+      isFirstSchedulerRun = false;
+      for (const ev of liveEvents) {
+        if (ev.state === 'post') {
+          settledMatchesRegistry.add(ev.id);
+        }
+      }
+      saveSchedulerState();
+      console.log(`[Scheduler] Bootstrapped with ${settledMatchesRegistry.size} historical finished matches seeded without spamming.`);
+      return;
+    }
+
+    // Check finished matches to send instant settlement (ONLY for matches that finish during live operation)
     for (const ev of liveEvents) {
       if (ev.state === 'post' && !settledMatchesRegistry.has(ev.id)) {
         settledMatchesRegistry.add(ev.id);
+        saveSchedulerState();
         const homeScore = parseInt(ev.scoreHome, 10) || 0;
         const awayScore = parseInt(ev.scoreAway, 10) || 0;
         const totalGoals = homeScore + awayScore;
@@ -4318,6 +4363,7 @@ async function runAutonomousSchedulerEngine() {
 💰 <b>Stake Sugerido Parlay:</b> 1.5 Unidades`;
 
       await sendRawTelegramMessage(VIP_CHANNEL_ID, vipBroadcastMsg, undefined, SIGNALS_BOT_TOKEN);
+      saveSchedulerState();
       console.log(`[AutoPilot 24/7] Daily Telegram broadcasts sent successfully to Public & VIP channels.`);
     }
 
