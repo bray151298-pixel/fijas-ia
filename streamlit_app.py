@@ -1,3 +1,4 @@
+import os
 """
 Maquina de Predicciones de Futbol
 =================================
@@ -36,10 +37,10 @@ def check_admin_auth() -> bool:
     """Verifica credenciales de Administrador para proteger el panel privado."""
     try:
         admin_user = st.secrets.get("ADMIN_USER", "admin")
-        admin_pass = st.secrets.get("ADMIN_PASSWORD", "FijasIA2026*")
+        admin_pass = st.secrets.get("ADMIN_PASSWORD", os.getenv("ADMIN_PASSWORD", ""))
     except Exception:
         admin_user = "admin"
-        admin_pass = "FijasIA2026*"
+        admin_pass = os.getenv("ADMIN_PASSWORD", "")
 
     if "auth_ok" not in st.session_state:
         st.session_state["auth_ok"] = False

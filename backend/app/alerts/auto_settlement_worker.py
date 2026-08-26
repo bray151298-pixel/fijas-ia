@@ -1,3 +1,4 @@
+import os
 # -*- coding: utf-8 -*-
 import asyncio
 import logging
@@ -6,7 +7,7 @@ import httpx
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 logger = logging.getLogger('AutoSettler')
 
-MAIN_BOT_TOKEN = '8716300226:AAFtHuVEAaxtd1Cq0nMX0wTQsQpzkFkRsas'
+MAIN_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', os.getenv('MAIN_BOT_TOKEN', ''))
 PUBLIC_CHANNEL = '@FijasIAOficial'
 VIP_CHANNEL_ID = '-1004358917232'
 BASE_URL = f'https://api.telegram.org/bot{MAIN_BOT_TOKEN}'

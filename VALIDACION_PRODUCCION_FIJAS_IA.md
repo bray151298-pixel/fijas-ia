@@ -81,7 +81,7 @@ Consulta real de ESPN para hoy (26/08/2026):
   * **Verificación tras reinicio:** Las señales históricas y su balance financiero sobreviven intactos sin pérdida de datos.
 
 ## 10. PRUEBA DE CONECTIVIDAD TELEGRAM
-* **Bot de Señales:** `@FijasIAOficial_bot` (`8716300226:AAFtHuVEAaxtd1Cq0nMX0wTQsQpzkFkRsas`)
+* **Bot de Señales:** `@FijasIAOficial_bot` (`[TELEGRAM_BOT_TOKEN_CONFIGURADO_EN_ENV]`)
 * **Endpoint `getMe` de Telegram:** `200 OK` (Conexión activa con servidores de Telegram).
 * **Protección contra duplicados:** `settledMatchesRegistry` y persistencia en `scheduler_state.json` evitan doble envío.
 

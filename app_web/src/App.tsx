@@ -207,7 +207,7 @@ const INITIAL_AUTOPILOT_STATE: AutoPilotState = {
 };
 
 export default function App() {
-  // Admin Login Security Gate (Restricted Access: admin / FijasIA2026*)
+  // Admin Login Security Gate (Restricted Server-Authenticated Access)
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => {
     try {
       return Boolean(localStorage.getItem('fijas_ia_admin_auth'));

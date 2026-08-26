@@ -22,12 +22,12 @@ logging.basicConfig(
 logger = logging.getLogger('QuantumEngine')
 
 # Credenciales y Canales
-MAIN_BOT_TOKEN = '8716300226:AAFtHuVEAaxtd1Cq0nMX0wTQsQpzkFkRsas'
-SUPPORT_BOT_TOKEN = '8651067640:AAEj5wcb4qlIHgm7BjGOdxkUF0ccMRi9LXU'
+MAIN_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', os.getenv('MAIN_BOT_TOKEN', ''))
+SUPPORT_BOT_TOKEN = os.getenv('SUPPORT_BOT_TOKEN', '')
 PUBLIC_CHANNEL = '@FijasIAOficial'
 VIP_CHANNEL_ID = '-1004358917232'
-ADMIN_TELEGRAM_ID = '5261686165'
-GOOGLE_API_KEY = 'AIzaSyCSSSoFRgd6_eQA0_d6Um07Iz9nI4eHHdo'
+ADMIN_TELEGRAM_ID = os.getenv('ADMIN_TELEGRAM_ID', '')
+GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY', '')
 
 BASE_MAIN = f'https://api.telegram.org/bot{MAIN_BOT_TOKEN}'
 BASE_SUPPORT = f'https://api.telegram.org/bot{SUPPORT_BOT_TOKEN}'

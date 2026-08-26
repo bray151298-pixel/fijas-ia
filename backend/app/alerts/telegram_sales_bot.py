@@ -1,3 +1,4 @@
+import os
 # -*- coding: utf-8 -*-
 import asyncio
 import logging
@@ -6,12 +7,12 @@ import httpx
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 logger = logging.getLogger('SalesBot')
 
-SUPPORT_BOT_TOKEN = '8651067640:AAEj5wcb4qlIHgm7BjGOdxkUF0ccMRi9LXU'
-MAIN_BOT_TOKEN = '8716300226:AAFtHuVEAaxtd1Cq0nMX0wTQsQpzkFkRsas'
-ADMIN_TELEGRAM_ID = '5261686165'
+SUPPORT_BOT_TOKEN = os.getenv('SUPPORT_BOT_TOKEN', '')
+MAIN_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', os.getenv('MAIN_BOT_TOKEN', ''))
+ADMIN_TELEGRAM_ID = os.getenv('ADMIN_TELEGRAM_ID', '')
 VIP_CHANNEL_ID = '-1004358917232'
 PUBLIC_CHANNEL = '@FijasIAOficial'
-GOOGLE_API_KEY = 'AIzaSyCSSSoFRgd6_eQA0_d6Um07Iz9nI4eHHdo'
+GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY', '')
 
 BASE_URL = f'https://api.telegram.org/bot{SUPPORT_BOT_TOKEN}'
 MAIN_BASE_URL = f'https://api.telegram.org/bot{MAIN_BOT_TOKEN}'

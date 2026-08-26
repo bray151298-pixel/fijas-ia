@@ -53,7 +53,7 @@ async function runIntegrationValidation() {
 
   // 3. TELEGRAM CONNECTION & FORMATTING TEST
   console.log('\n[3/4] PROBANDO CONECTIVIDAD TELEGRAM (GETME & FORMATTER)...');
-  const SIGNALS_BOT_TOKEN = "8716300226:AAFtHuVEAaxtd1Cq0nMX0wTQsQpzkFkRsas";
+  const SIGNALS_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || process.env.SIGNALS_BOT_TOKEN || "";
   try {
     const tgRes = await fetch(`https://api.telegram.org/bot${SIGNALS_BOT_TOKEN}/getMe`);
     const tgData = await tgRes.json();

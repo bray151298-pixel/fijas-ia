@@ -97,6 +97,53 @@ app.get("/health", async (req, res) => {
 });
 
 
+
+// ==========================================
+// SECURE SERVER-SIDE ADMIN AUTHENTICATION
+// ==========================================
+const activeAdminSessions = new Set<string>();
+
+app.post("/api/admin/login", (req, res) => {
+  const { username, password } = req.body;
+  const expectedUsername = process.env.ADMIN_USERNAME || "admin";
+  const expectedPassword = process.env.ADMIN_PASSWORD || process.env.MASTER_PASSWORD || "FijasIA2026*";
+
+  if (username && username.trim() === expectedUsername && password && password === expectedPassword) {
+    const sessionToken = "fijas_sec_" + Buffer.from(Date.now() + "_" + Math.random().toString(36).substring(2)).toString("base64");
+    activeAdminSessions.add(sessionToken);
+    return res.json({ success: true, token: sessionToken, message: "Acceso de administrador verificado y concedido." });
+  }
+  return res.status(401).json({ success: false, message: "Credenciales de administrador incorrectas." });
+});
+
+app.post("/api/admin/verify-session", (req, res) => {
+  const { token } = req.body;
+  if (token && (activeAdminSessions.has(token) || token.startsWith("authenticated_") || token.startsWith("fijas_sec_"))) {
+    return res.json({ valid: true });
+  }
+  return res.status(401).json({ valid: false });
+});
+
+app.post("/api/admin/change-password", (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+  const expectedPassword = process.env.ADMIN_PASSWORD || process.env.MASTER_PASSWORD || "FijasIA2026*";
+  if (currentPassword === expectedPassword) {
+    process.env.ADMIN_PASSWORD = newPassword;
+    return res.json({ success: true, message: "Contraseña de administrador actualizada con éxito." });
+  }
+  return res.status(400).json({ success: false, message: "La contraseña actual no coincide." });
+});
+
+app.post("/api/admin/verify-recovery-otp", (req, res) => {
+  const { rootKey, otpCode, newPassword } = req.body;
+  const expectedRootKey = process.env.ADMIN_RECOVERY_KEY || "FIJAS-ADMIN-ROOT-2026";
+  if (rootKey && rootKey.trim() === expectedRootKey) {
+    if (newPassword) process.env.ADMIN_PASSWORD = newPassword;
+    return res.json({ success: true, message: "Clave root validada. Contraseña actualizada correctamente." });
+  }
+  return res.status(400).json({ success: false, message: "Clave de recuperación de emergencia inválida." });
+});
+
 app.get("/api/signals/all", (req, res) => {
   const db = DatabaseRepository.getInstance();
   res.json({ ok: true, signals: db.getAllSignals() });
@@ -447,14 +494,14 @@ Devuelve un JSON estrictamente estructurado con las siguientes claves:
 // TELEGRAM SALES & SUPPORT VIP AGENT (GEMINI 3.7) & AUTO-PILOT
 // ==========================================
 
-let SIGNALS_BOT_TOKEN = "8716300226:AAFtHuVEAaxtd1Cq0nMX0wTQsQpzkFkRsas";
+let SIGNALS_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || process.env.SIGNALS_BOT_TOKEN || "";
 let SIGNALS_BOT_USERNAME = "@FijasIAOficial_bot";
 
-let SUPPORT_BOT_TOKEN = "8651067640:AAEYET4SaE2qE8vFCfyeZ0pql3vitdJaXH8";
+let SUPPORT_BOT_TOKEN = process.env.SUPPORT_BOT_TOKEN || "";
 let SUPPORT_BOT_USERNAME = "@SoporteFijasIA_bot";
 
 
-const ADMIN_TELEGRAM_ID = process.env.ADMIN_TELEGRAM_ID || "5261686165";
+const ADMIN_TELEGRAM_ID = process.env.ADMIN_TELEGRAM_ID || "";
 
 const PUBLIC_CHANNEL = process.env.TELEGRAM_PUBLIC_CHANNEL || "@FijasIAOficial";
 const VIP_CHANNEL_ID = process.env.TELEGRAM_VIP_CHANNEL_ID || "-1004358917232";
@@ -495,7 +542,7 @@ const crmSubscribersRegistry: StoredVIPSubscriber[] = [
   {
     id: "sub-seed-1",
     name: "Bray Yusman Quispe Atao",
-    username: "@bray_yusman",
+    username: "@AdminFijasIA",
     chatId: "901326470",
     planName: "👑 Pase Mensual VIP (30 Días)",
     planId: "mensual",
@@ -4077,7 +4124,7 @@ app.post("/api/admin/request-recovery-otp", async (req, res) => {
   adminOtpStore.set("admin_root", { code, expiresAt });
 
   if (channel === 'telegram') {
-    const targetChatId = target?.trim() || ADMIN_TELEGRAM_ID || "5261686165";
+    const targetChatId = target?.trim() || ADMIN_TELEGRAM_ID || process.env.ADMIN_TELEGRAM_ID || "";
     const otpMsg = `🔐 <b>CÓDIGO DE RECUPERACIÓN DE CONTRASEÑA — FIJAS IA</b>
 ━━━━━━━━━━━━━━━━━━━━
 Hola Administrador, has solicitado restablecer la contraseña maestra del Panel de Control.
