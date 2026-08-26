@@ -40,6 +40,45 @@ const app = express();
 // ==========================================
 // CORE ENGINE: AUDITABLE PERSISTENCE & HEALTH
 // ==========================================
+
+app.get("/api/diagnostics/espn", async (req, res) => {
+  const url = 'https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard';
+  const headers = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+    'Accept': 'application/json, text/plain, */*',
+    'Referer': 'https://www.espn.com/'
+  };
+
+  try {
+    const t0 = Date.now();
+    const resp = await fetch(url, { headers });
+    const latency = Date.now() - t0;
+    if (resp.ok) {
+      const data = await resp.json();
+      res.json({
+        ok: true,
+        http_status: resp.status,
+        latency_ms: latency,
+        raw_events_count: (data.events || []).length,
+        first_event_name: data.events?.[0]?.name || null
+      });
+    } else {
+      res.json({
+        ok: false,
+        http_status: resp.status,
+        status_text: resp.statusText,
+        latency_ms: latency
+      });
+    }
+  } catch (err) {
+    res.json({
+      ok: false,
+      error: (err as Error).message,
+      stack: (err as Error).stack
+    });
+  }
+});
+
 app.get("/health", async (req, res) => {
   const dataEngine = DataUpdateEngine.getInstance();
   const db = DatabaseRepository.getInstance();
