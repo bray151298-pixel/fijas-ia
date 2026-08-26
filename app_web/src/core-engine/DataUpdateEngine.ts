@@ -1,6 +1,6 @@
 /**
  * DataUpdateEngine.ts
- * Coordinates real-time data fetching across multiple sports endpoints with adaptive intervals.
+ * Coordinates real-time data fetching across multiple sports endpoints concurrently.
  */
 
 import { SportEvent, EventNormalizer } from './EventNormalizer';
@@ -53,33 +53,48 @@ export class DataUpdateEngine {
   }
 
   public async fetchRealEvents(dateIsoParam?: string): Promise<SportEvent[]> {
-    const targetDate = dateIsoParam || TimeService.getLimaDateIsoFormat();
-    const endpoints = this.getEndpoints(targetDate);
+    const endpoints = this.getEndpoints(dateIsoParam);
 
     const headers = {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
       'Accept': 'application/json, text/plain, */*',
+      'Accept-Language': 'es-419,es;q=0.9,en;q=0.8',
       'Referer': 'https://www.espn.com/'
     };
 
-    const fetchedEvents: SportEvent[] = [];
-
-    for (const ep of endpoints) {
+    const fetchTasks = endpoints.map(async (ep) => {
+      const epEvents: SportEvent[] = [];
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 6000);
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
         const res = await fetch(ep.url, { headers, signal: controller.signal });
         clearTimeout(timeoutId);
 
         if (res.ok) {
           const data = await res.json();
           for (const raw of (data.events || [])) {
-            const normalized = EventNormalizer.normalizeEspnEvent(raw, ep.league, ep.sport);
-            fetchedEvents.push(normalized);
+            try {
+              const normalized = EventNormalizer.normalizeEspnEvent(raw, ep.league, ep.sport);
+              if (normalized && normalized.home_team && normalized.away_team) {
+                epEvents.push(normalized);
+              }
+            } catch (errNormalizing) {
+              // Ignore single malformed match
+            }
           }
         }
-      } catch (err) {
-        // Individual league timeout ignored gracefully
+      } catch (errFetch) {
+        // Ignore single league network timeout
+      }
+      return epEvents;
+    });
+
+    const settledResults = await Promise.allSettled(fetchTasks);
+    const fetchedEvents: SportEvent[] = [];
+
+    for (const result of settledResults) {
+      if (result.status === 'fulfilled' && Array.isArray(result.value)) {
+        fetchedEvents.push(...result.value);
       }
     }
 
