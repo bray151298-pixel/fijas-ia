@@ -6,6 +6,7 @@
 import { DatabaseRepository } from './DatabaseRepository';
 import { DataUpdateEngine } from './DataUpdateEngine';
 import { TimeService } from './TimeService';
+import { PostgresRepository } from './PostgresRepository';
 
 export interface HealthReport {
   status: 'healthy' | 'degraded' | 'critical';
@@ -24,11 +25,11 @@ export interface HealthReport {
     storage_type: string;
   };
   signals: {
-    production: number;
-    test: number;
-    historical: number;
-    pending: number;
-    settled: number;
+    production_total: number;
+    production_pending: number;
+    production_settled: number;
+    test_total: number;
+    historical_total: number;
   };
   telegram: {
     status: 'connected' | 'unconfigured';
@@ -71,14 +72,17 @@ export class HealthService {
       },
       database: {
         status: 'connected',
-        storage_type: 'Dual-Layer SQLite & JSON Persistent Store'
+        storage_type: PostgresRepository.getInstance().getStatus().connected 
+          ? 'PostgreSQL (Primary Source of Truth) + Dual-Layer Local Snapshot'
+          : 'Dual-Layer SQLite & JSON Persistent Store (Local Fallback)',
+        postgres_status: PostgresRepository.getInstance().getStatus().connected ? 'connected' : 'not_configured'
       },
       signals: {
-        production: allSignals.filter(s => s.environment === 'PRODUCTION').length,
-        test: allSignals.filter(s => s.environment === 'TEST').length,
-        historical: allSignals.filter(s => s.environment === 'HISTORICAL').length,
-        pending: allSignals.filter(s => s.status === 'PENDING' || s.status === 'UPCOMING' || s.status === 'LIVE').length,
-        settled: allSignals.filter(s => s.status === 'WON' || s.status === 'LOST' || s.status === 'PUSH').length
+        production_total: stats.production.totalSignals,
+        production_pending: stats.production.pendingCount,
+        production_settled: stats.production.settledCount,
+        test_total: stats.test.totalSignals,
+        historical_total: stats.historical.totalSignals
       },
       telegram: {
         status: 'connected',

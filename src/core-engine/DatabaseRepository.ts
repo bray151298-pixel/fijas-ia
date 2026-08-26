@@ -9,11 +9,14 @@ import * as path from 'path';
 import { SportEvent } from './EventNormalizer';
 import { SignalEntity, SignalStatus, ResultStatus, SignalEnvironment } from './SignalEntity';
 import { TimeService } from './TimeService';
+import { PostgresRepository } from './PostgresRepository';
+
 
 export interface DatabaseState {
   events: Record<string, SportEvent>;
   signals: Record<string, SignalEntity>;
   settledSignalsHistory: SignalEntity[];
+  telegram_dispatched_keys: Record<string, number>;
   lastRefreshTimestamp: string;
   dataAgeSeconds: number;
 }
@@ -216,9 +219,27 @@ export class DatabaseRepository {
     }
   ];
 
+  private pg: PostgresRepository;
+
   private constructor() {
     this.filePath = path.join(process.cwd(), 'data', 'fijas_database.json');
+    this.pg = PostgresRepository.getInstance();
     this.state = this.loadState();
+    this.createBackupSnapshot();
+  }
+
+  private createBackupSnapshot(): void {
+    try {
+      if (fs.existsSync(this.filePath)) {
+        const backupDir = path.join(process.cwd(), 'data', 'backups');
+        if (!fs.existsSync(backupDir)) {
+          fs.mkdirSync(backupDir, { recursive: true });
+        }
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const backupPath = path.join(backupDir, `backup_fijas_database_${timestamp}.json`);
+        fs.copyFileSync(this.filePath, backupPath);
+      }
+    } catch (e) {}
   }
 
   public static getInstance(): DatabaseRepository {
@@ -244,6 +265,7 @@ export class DatabaseRepository {
           events: parsed.events || {},
           signals: mergedSignals,
           settledSignalsHistory: Array.isArray(parsed.settledSignalsHistory) ? parsed.settledSignalsHistory : [...DatabaseRepository.HISTORICAL_ARCHIVE_SIGNALS],
+          telegram_dispatched_keys: parsed.telegram_dispatched_keys || {},
           lastRefreshTimestamp: parsed.lastRefreshTimestamp || TimeService.nowUtc(),
           dataAgeSeconds: parsed.dataAgeSeconds || 0
         };
@@ -256,6 +278,7 @@ export class DatabaseRepository {
       events: {},
       signals: historicalMap,
       settledSignalsHistory: [...DatabaseRepository.HISTORICAL_ARCHIVE_SIGNALS],
+      telegram_dispatched_keys: {},
       lastRefreshTimestamp: TimeService.nowUtc(),
       dataAgeSeconds: 0
     };
@@ -299,6 +322,7 @@ export class DatabaseRepository {
   public saveSignal(signal: SignalEntity): void {
     this.state.signals[signal.signal_id] = signal;
     this.saveState();
+    this.pg.saveSignal(signal).catch(() => {});
   }
 
   public getSignal(signalId: string): SignalEntity | undefined {
@@ -358,6 +382,7 @@ export class DatabaseRepository {
     }
 
     this.saveState();
+    this.pg.saveSignal(signal).catch(() => {});
     return signal;
   }
 
@@ -389,6 +414,20 @@ export class DatabaseRepository {
       netUnitsProfit: Number(netUnitsProfit.toFixed(2)),
       netProfitSoles: Number(netProfitSoles.toFixed(2))
     };
+  }
+
+
+  // --- Telegram Idempotency Shield ---
+  public isTelegramDispatched(signalId: string, type: 'SIGNAL' | 'RESULT'): boolean {
+    const key = `${signalId}_${type}`;
+    return Boolean(this.state.telegram_dispatched_keys[key]);
+  }
+
+  public recordTelegramDispatched(signalId: string, type: 'SIGNAL' | 'RESULT', messageId: number): void {
+    const key = `${signalId}_${type}`;
+    this.state.telegram_dispatched_keys[key] = messageId;
+    this.saveState();
+    this.pg.recordTelegramDispatch(signalId, type, messageId).catch(() => {});
   }
 
   public getAuditStatistics() {
