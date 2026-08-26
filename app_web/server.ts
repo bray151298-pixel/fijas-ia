@@ -4395,6 +4395,12 @@ async function runAutonomousSchedulerEngine() {
 
       let signalCounter = 1;
       for (const ev of realEvents) {
+        // Strict same-day guard: Only publish signals for matches taking place TODAY
+        const eventDay = TimeService.getLimaDateIsoFormat(ev.start_time_utc);
+        if (eventDay !== todayStr) {
+          continue; // Skips matches scheduled for future days (e.g. Friday)
+        }
+
         const validation = EventValidator.validateForSignalGeneration(ev, existingSignalEventIds);
         if (validation.isValidForSignalCreation) {
           const signal = AnalysisEngine.createSignalFromEvent(ev, signalCounter++);

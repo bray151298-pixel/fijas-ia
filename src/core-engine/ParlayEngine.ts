@@ -2,6 +2,8 @@
  * ParlayEngine.ts
  * Enterprise Quantitative Parlay (Combinadas) Engine for FIJAS IA.
  * Mathematically constructs independent, high-+EV 2-leg combinadas with joint probability models.
+ * STRICT RULE: All legs in a parlay MUST be played on the EXACT SAME DAY (Today).
+ * If there are not at least 2 independent +EV matches TODAY -> NO_EMIT_PARLAY (returns empty []).
  */
 
 import { SignalEntity, SignalEnvironment } from './SignalEntity';
@@ -13,6 +15,7 @@ export interface ParlayLeg {
   league: string;
   home_team: string;
   away_team: string;
+  event_start_utc: string;
   event_start_local: string;
   selection: string;
   odds: number;
@@ -43,26 +46,33 @@ export class ParlayEngine {
   public static readonly SOLES_PER_UNIT = 50.0;
 
   /**
-   * Generates optimal +EV parlays from approved single signals
+   * Generates optimal +EV parlays strictly from matches playing TODAY (Same Day)
    */
   public static generateOptimalParlays(
     signals: SignalEntity[], 
-    env: SignalEnvironment = 'PRODUCTION'
+    env: SignalEnvironment = 'PRODUCTION',
+    targetDateIso?: string
   ): ParlayEntity[] {
-    const validSignals = signals.filter(s => 
-      s.odds > 1.20 && 
-      s.odds <= 2.20 && 
-      (s.expected_value || 0) >= 0.02 && 
-      s.confidence >= 55.0
-    );
+    const todayLimaStr = targetDateIso || TimeService.getLimaDateIsoFormat(TimeService.nowUtc());
 
-    if (validSignals.length < 2) return [];
+    // 1. Filter signals: must be valid, +EV, and played TODAY in Lima timezone
+    const todayValidSignals = signals.filter(s => {
+      const signalDay = TimeService.getLimaDateIsoFormat(s.event_start_utc);
+      const isSameDay = signalDay === todayLimaStr;
+      const isProfitable = s.odds > 1.20 && s.odds <= 2.20 && (s.expected_value || 0) >= 0.02 && s.confidence >= 55.0;
+      return isSameDay && isProfitable;
+    });
+
+    // If there are not at least 2 independent matches playing TODAY -> DO NOT EMIT PARLAY
+    if (todayValidSignals.length < 2) {
+      console.log(`[ParlayEngine] NO_EMIT_PARLAY: Solo hay ${todayValidSignals.length} partido(s) +EV para hoy (${todayLimaStr}). Se requieren al menos 2.`);
+      return [];
+    }
 
     const parlays: ParlayEntity[] = [];
-    const todayStr = TimeService.getLimaDateIsoFormat(TimeService.nowUtc());
 
-    // 1. Check for Soccer Double (Fútbol + Fútbol)
-    const soccerSignals = validSignals.filter(s => s.sport === 'football');
+    // 2. Check for Soccer Double (Fútbol + Fútbol de HOY)
+    const soccerSignals = todayValidSignals.filter(s => s.sport === 'football');
     if (soccerSignals.length >= 2) {
       const legA = soccerSignals[0];
       const legB = soccerSignals[1];
@@ -77,7 +87,7 @@ export class ParlayEngine {
 
       if (ev >= this.MIN_PARLAY_EV) {
         parlays.push({
-          parlay_id: `PARLAY_${todayStr}_FUTBOL`,
+          parlay_id: `PARLAY_${todayLimaStr}_FUTBOL`,
           environment: env,
           title: 'COMBINADA FÚTBOL +EV',
           legs: [this.toLeg(legA), this.toLeg(legB)],
@@ -95,8 +105,8 @@ export class ParlayEngine {
       }
     }
 
-    // 2. Check for Multi-Sport Gold Parlay (Cross-Sport)
-    const nonSoccer = validSignals.filter(s => s.sport !== 'football');
+    // 3. Check for Multi-Sport Gold Parlay (Cross-Sport de HOY)
+    const nonSoccer = todayValidSignals.filter(s => s.sport !== 'football');
     if (soccerSignals.length >= 1 && nonSoccer.length >= 1) {
       const legA = soccerSignals[0];
       const legB = nonSoccer[0];
@@ -111,7 +121,7 @@ export class ParlayEngine {
 
       if (ev >= this.MIN_PARLAY_EV) {
         parlays.push({
-          parlay_id: `PARLAY_${todayStr}_ORO`,
+          parlay_id: `PARLAY_${todayLimaStr}_ORO`,
           environment: env,
           title: 'COMBINADA DE ORO MULTI-DEPORTE',
           legs: [this.toLeg(legA), this.toLeg(legB)],
@@ -139,6 +149,7 @@ export class ParlayEngine {
       league: sig.league,
       home_team: sig.home_team,
       away_team: sig.away_team,
+      event_start_utc: sig.event_start_utc,
       event_start_local: sig.event_start_local,
       selection: sig.selection,
       odds: sig.odds,
