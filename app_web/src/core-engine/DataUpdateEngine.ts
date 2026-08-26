@@ -56,10 +56,8 @@ export class DataUpdateEngine {
     const endpoints = this.getEndpoints(dateIsoParam);
 
     const headers = {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-      'Accept': 'application/json, text/plain, */*',
-      'Accept-Language': 'es-419,es;q=0.9,en;q=0.8',
-      'Referer': 'https://www.espn.com/'
+      'User-Agent': 'ESPN/7.4.0 (iPhone; iOS 16.0; Scale/3.00)',
+      'Accept': 'application/json, text/plain, */*'
     };
 
     const fetchTasks = endpoints.map(async (ep) => {
