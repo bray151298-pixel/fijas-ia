@@ -6,3 +6,9 @@ coverage/
 *.log
 .env*
 !.env.example
+*.secret
+credentials.json
+*.sqlite
+*.sqlite3
+data/*.sqlite
+data/*.sqlite3

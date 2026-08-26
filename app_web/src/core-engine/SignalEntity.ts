@@ -5,6 +5,8 @@
 
 import { SportCategory, MarketType } from './MarketRulesRegistry';
 
+export type SignalEnvironment = 'PRODUCTION' | 'TEST' | 'HISTORICAL';
+
 export type SignalStatus = 
   | 'PENDING'
   | 'UPCOMING'
@@ -19,6 +21,7 @@ export type ResultStatus = 'UNRESOLVED' | 'WON' | 'LOST' | 'PUSH' | 'VOID';
 
 export interface SignalEntity {
   signal_id: string;              // Deterministic ID: SIG_YYYYMMDD_XXXX
+  environment: SignalEnvironment; // PRODUCTION | TEST | HISTORICAL
   event_id: string;               // EVT_YYYYMMDD_HOME_AWAY
   provider_event_id: string;      // ESPN ID
   sport: SportCategory;

@@ -74,6 +74,7 @@ export class TestSuite {
     // CASO 4: Signal original Connecticut Sun -4.5 con resultado 87 - 81 -> WON
     const wnbaSignal: SignalEntity = {
       signal_id: 'SIG_20260826_004',
+      environment: 'TEST',
       event_id: 'EVT_20260826_SUN_SKY',
       provider_event_id: '456',
       sport: 'basketball',
@@ -135,6 +136,7 @@ export class TestSuite {
     // CASO 5: Angels 2 - 4 Guardians. Pick Angels Ganador -> LOST
     const mlbSignal: SignalEntity = {
       signal_id: 'SIG_20260826_005',
+      environment: 'TEST',
       event_id: 'EVT_20260826_ANGELS_GUARDIANS',
       provider_event_id: '789',
       sport: 'baseball',

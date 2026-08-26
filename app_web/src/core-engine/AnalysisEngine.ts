@@ -167,7 +167,7 @@ export class AnalysisEngine {
     };
   }
 
-  public static createSignalFromEvent(event: SportEvent, index: number = 1): SignalEntity {
+  public static createSignalFromEvent(event: SportEvent, index: number = 1, env: 'PRODUCTION' | 'TEST' | 'HISTORICAL' = 'PRODUCTION'): SignalEntity {
     const analysis = this.analyzeEvent(event);
     const dateKey = TimeService.getLimaDateIsoFormat(event.start_time_utc);
     const indexStr = String(index).padStart(3, '0');
@@ -175,6 +175,7 @@ export class AnalysisEngine {
 
     return {
       signal_id: signalId,
+      environment: env,
       event_id: event.event_id,
       provider_event_id: event.provider_event_id,
       sport: event.sport,

@@ -1,13 +1,13 @@
 /**
  * DatabaseRepository.ts
  * Persistent Single Source of Truth for Events, Signals, Settlements, and Audit History.
- * Supports persistent JSON storage on disk with cold-boot recovery and SQLite-ready schema.
+ * Clearly separates PRODUCTION, TEST, and HISTORICAL environments.
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
 import { SportEvent } from './EventNormalizer';
-import { SignalEntity, SignalStatus, ResultStatus } from './SignalEntity';
+import { SignalEntity, SignalStatus, ResultStatus, SignalEnvironment } from './SignalEntity';
 import { TimeService } from './TimeService';
 
 export interface DatabaseState {
@@ -18,11 +18,30 @@ export interface DatabaseState {
   dataAgeSeconds: number;
 }
 
-export class DatabaseRepository {
+export interface EnvironmentAuditMetrics {
+  totalSignals: number;
+  settledCount: number;
+  pendingCount: number;
+  wonCount: number;
+  lostCount: number;
+  pushCount: number;
+  winRate: number;
+  yieldRoi: number;
+  totalUnitsStaked: number;
+  netUnitsProfit: number;
+  netProfitSoles: number;
+}
 
-  private static readonly AUDITED_SEED_SIGNALS: SignalEntity[] = [
+export class DatabaseRepository {
+  private static instance: DatabaseRepository;
+  private filePath: string;
+  private state: DatabaseState;
+
+  // Verified historical archive (tagged as HISTORICAL)
+  private static readonly HISTORICAL_ARCHIVE_SIGNALS: SignalEntity[] = [
     {
       signal_id: 'SIG_20260824_101',
+      environment: 'HISTORICAL',
       event_id: 'EVT_20260824_FULHAM_CHELSEA',
       provider_event_id: '101',
       sport: 'football',
@@ -57,6 +76,7 @@ export class DatabaseRepository {
     },
     {
       signal_id: 'SIG_20260824_100',
+      environment: 'HISTORICAL',
       event_id: 'EVT_20260824_LEVANTE_OSASUNA',
       provider_event_id: '100',
       sport: 'football',
@@ -91,6 +111,7 @@ export class DatabaseRepository {
     },
     {
       signal_id: 'SIG_20260824_099',
+      environment: 'HISTORICAL',
       event_id: 'EVT_20260824_CORDOBA_TIGRE',
       provider_event_id: '099',
       sport: 'football',
@@ -125,6 +146,7 @@ export class DatabaseRepository {
     },
     {
       signal_id: 'SIG_20260824_098',
+      environment: 'HISTORICAL',
       event_id: 'EVT_20260824_RED_SOX_MARLINS',
       provider_event_id: '098',
       sport: 'baseball',
@@ -159,6 +181,7 @@ export class DatabaseRepository {
     },
     {
       signal_id: 'SIG_20260824_095',
+      environment: 'HISTORICAL',
       event_id: 'EVT_20260824_UNIVERSITARIO_CHANKAS',
       provider_event_id: '095',
       sport: 'football',
@@ -193,10 +216,6 @@ export class DatabaseRepository {
     }
   ];
 
-  private static instance: DatabaseRepository;
-  private filePath: string;
-  private state: DatabaseState;
-
   private constructor() {
     this.filePath = path.join(process.cwd(), 'data', 'fijas_database.json');
     this.state = this.loadState();
@@ -210,14 +229,21 @@ export class DatabaseRepository {
   }
 
   private loadState(): DatabaseState {
+    const historicalMap: Record<string, SignalEntity> = {};
+    for (const s of DatabaseRepository.HISTORICAL_ARCHIVE_SIGNALS) {
+      historicalMap[s.signal_id] = s;
+    }
+
     try {
       if (fs.existsSync(this.filePath)) {
         const raw = fs.readFileSync(this.filePath, 'utf-8');
         const parsed = JSON.parse(raw);
+        
+        const mergedSignals = { ...historicalMap, ...(parsed.signals || {}) };
         return {
           events: parsed.events || {},
-          signals: parsed.signals || {},
-          settledSignalsHistory: Array.isArray(parsed.settledSignalsHistory) ? parsed.settledSignalsHistory : [],
+          signals: mergedSignals,
+          settledSignalsHistory: Array.isArray(parsed.settledSignalsHistory) ? parsed.settledSignalsHistory : [...DatabaseRepository.HISTORICAL_ARCHIVE_SIGNALS],
           lastRefreshTimestamp: parsed.lastRefreshTimestamp || TimeService.nowUtc(),
           dataAgeSeconds: parsed.dataAgeSeconds || 0
         };
@@ -226,15 +252,10 @@ export class DatabaseRepository {
       console.warn('[DatabaseRepository] Failed to read database file, initializing clean state:', e);
     }
 
-    const initialSignals: Record<string, SignalEntity> = {};
-    for (const seed of DatabaseRepository.AUDITED_SEED_SIGNALS) {
-      initialSignals[seed.signal_id] = seed;
-    }
-
     return {
       events: {},
-      signals: initialSignals,
-      settledSignalsHistory: [...DatabaseRepository.AUDITED_SEED_SIGNALS],
+      signals: historicalMap,
+      settledSignalsHistory: [...DatabaseRepository.HISTORICAL_ARCHIVE_SIGNALS],
       lastRefreshTimestamp: TimeService.nowUtc(),
       dataAgeSeconds: 0
     };
@@ -288,13 +309,15 @@ export class DatabaseRepository {
     return Object.values(this.state.signals).find(s => s.event_id === eventId);
   }
 
-  public getAllSignals(): SignalEntity[] {
-    return Object.values(this.state.signals);
+  public getAllSignals(env?: SignalEnvironment): SignalEntity[] {
+    const list = Object.values(this.state.signals);
+    if (env) return list.filter(s => s.environment === env);
+    return list;
   }
 
-  public getPendingSignals(): SignalEntity[] {
+  public getPendingSignals(env: SignalEnvironment = 'PRODUCTION'): SignalEntity[] {
     return Object.values(this.state.signals).filter(
-      s => s.status === 'PENDING' || s.status === 'UPCOMING' || s.status === 'LIVE'
+      s => s.environment === env && (s.status === 'PENDING' || s.status === 'UPCOMING' || s.status === 'LIVE')
     );
   }
 
@@ -327,7 +350,6 @@ export class DatabaseRepository {
     signal.units_net_profit = unitsNet;
     signal.soles_net_profit = solesNet;
 
-    // Check if not already in history
     const historyIndex = this.state.settledSignalsHistory.findIndex(s => s.signal_id === signalId);
     if (historyIndex >= 0) {
       this.state.settledSignalsHistory[historyIndex] = { ...signal };
@@ -339,17 +361,13 @@ export class DatabaseRepository {
     return signal;
   }
 
-  // --- Statistics ---
-  public getAuditStatistics() {
-    const settled = Object.values(this.state.signals).filter(
-      s => s.status === 'WON' || s.status === 'LOST' || s.status === 'PUSH'
-    );
+  // --- Statistics by Environment ---
+  private calculateMetricsForList(signals: SignalEntity[]): EnvironmentAuditMetrics {
+    const settled = signals.filter(s => s.status === 'WON' || s.status === 'LOST' || s.status === 'PUSH');
     const won = settled.filter(s => s.status === 'WON');
     const lost = settled.filter(s => s.status === 'LOST');
     const push = settled.filter(s => s.status === 'PUSH');
-    const pending = Object.values(this.state.signals).filter(
-      s => s.status === 'PENDING' || s.status === 'UPCOMING' || s.status === 'LIVE'
-    );
+    const pending = signals.filter(s => s.status === 'PENDING' || s.status === 'UPCOMING' || s.status === 'LIVE');
 
     const totalSettledCount = won.length + lost.length;
     const winRate = totalSettledCount > 0 ? Number(((won.length / totalSettledCount) * 100).toFixed(2)) : 0;
@@ -359,7 +377,7 @@ export class DatabaseRepository {
     const yieldRoi = totalUnitsStaked > 0 ? Number(((netUnitsProfit / totalUnitsStaked) * 100).toFixed(2)) : 0;
 
     return {
-      totalSignals: Object.keys(this.state.signals).length,
+      totalSignals: signals.length,
       settledCount: settled.length,
       pendingCount: pending.length,
       wonCount: won.length,
@@ -369,7 +387,21 @@ export class DatabaseRepository {
       yieldRoi,
       totalUnitsStaked: Number(totalUnitsStaked.toFixed(2)),
       netUnitsProfit: Number(netUnitsProfit.toFixed(2)),
-      netProfitSoles: Number(netProfitSoles.toFixed(2)),
+      netProfitSoles: Number(netProfitSoles.toFixed(2))
+    };
+  }
+
+  public getAuditStatistics() {
+    const all = Object.values(this.state.signals);
+    const prodSignals = all.filter(s => s.environment === 'PRODUCTION');
+    const histSignals = all.filter(s => s.environment === 'HISTORICAL');
+    const testSignals = all.filter(s => s.environment === 'TEST');
+
+    return {
+      production: this.calculateMetricsForList(prodSignals),
+      historical: this.calculateMetricsForList(histSignals),
+      test: this.calculateMetricsForList(testSignals),
+      all: this.calculateMetricsForList(all),
       lastRefreshUtc: this.state.lastRefreshTimestamp
     };
   }

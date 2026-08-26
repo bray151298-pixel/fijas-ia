@@ -17,6 +17,9 @@ export interface LeagueEndpoint {
 export class DataUpdateEngine {
   private static instance: DataUpdateEngine;
   private db: DatabaseRepository;
+  private lastSuccessfulFetchUtc: string = TimeService.nowUtc();
+  private fetchedEventsCount: number = 0;
+  private persistedEventsCount: number = 0;
 
   // Refresh intervals in milliseconds
   public static readonly INTERVAL_UPCOMING_MS = 10 * 60 * 1000;   // 10 minutes
@@ -62,7 +65,11 @@ export class DataUpdateEngine {
 
     for (const ep of endpoints) {
       try {
-        const res = await fetch(ep.url, { headers });
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 6000);
+        const res = await fetch(ep.url, { headers, signal: controller.signal });
+        clearTimeout(timeoutId);
+
         if (res.ok) {
           const data = await res.json();
           for (const raw of (data.events || [])) {
@@ -71,14 +78,28 @@ export class DataUpdateEngine {
           }
         }
       } catch (err) {
-        console.warn(`[DataUpdateEngine] Failed to fetch ${ep.league}:`, (err as Error).message);
+        // Individual league timeout ignored gracefully
       }
     }
 
+    this.fetchedEventsCount = fetchedEvents.length;
     if (fetchedEvents.length > 0) {
+      this.lastSuccessfulFetchUtc = TimeService.nowUtc();
       this.db.saveEvents(fetchedEvents);
+      this.persistedEventsCount = this.db.getAllEvents().length;
+    } else {
+      this.persistedEventsCount = this.db.getAllEvents().length;
     }
 
     return fetchedEvents;
+  }
+
+  public getTelemetry() {
+    return {
+      fetched_events: this.fetchedEventsCount,
+      persisted_events: this.db.getAllEvents().length,
+      cached_events: this.db.getAllEvents().length,
+      last_successful_fetch_utc: this.lastSuccessfulFetchUtc
+    };
   }
 }
