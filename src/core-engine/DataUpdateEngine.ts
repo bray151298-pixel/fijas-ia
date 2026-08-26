@@ -38,16 +38,17 @@ export class DataUpdateEngine {
     return DataUpdateEngine.instance;
   }
 
-  public getEndpoints(dateIsoParam: string): LeagueEndpoint[] {
+  public getEndpoints(dateIsoParam?: string): LeagueEndpoint[] {
+    const query = dateIsoParam ? `?dates=${dateIsoParam}` : '';
     return [
-      { league: 'Copa Libertadores', sport: 'football', url: `https://site.api.espn.com/apis/site/v2/sports/soccer/conmebol.libertadores/scoreboard?dates=${dateIsoParam}` },
-      { league: 'Copa Sudamericana', sport: 'football', url: `https://site.api.espn.com/apis/site/v2/sports/soccer/conmebol.sudamericana/scoreboard?dates=${dateIsoParam}` },
-      { league: 'UEFA Champions League', sport: 'football', url: `https://site.api.espn.com/apis/site/v2/sports/soccer/uefa.champions/scoreboard?dates=${dateIsoParam}` },
-      { league: 'Liga 1 Perú', sport: 'football', url: `https://site.api.espn.com/apis/site/v2/sports/soccer/per.1/scoreboard?dates=${dateIsoParam}` },
-      { league: 'Liga Profesional Argentina', sport: 'football', url: `https://site.api.espn.com/apis/site/v2/sports/soccer/arg.1/scoreboard?dates=${dateIsoParam}` },
-      { league: 'Brasileirao Serie A', sport: 'football', url: `https://site.api.espn.com/apis/site/v2/sports/soccer/bra.1/scoreboard?dates=${dateIsoParam}` },
-      { league: 'MLB Grandes Ligas', sport: 'baseball', url: `https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates=${dateIsoParam}` },
-      { league: 'WNBA Baloncesto', sport: 'basketball', url: `https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/scoreboard?dates=${dateIsoParam}` }
+      { league: 'Copa Libertadores', sport: 'football', url: `https://site.api.espn.com/apis/site/v2/sports/soccer/conmebol.libertadores/scoreboard${query}` },
+      { league: 'Copa Sudamericana', sport: 'football', url: `https://site.api.espn.com/apis/site/v2/sports/soccer/conmebol.sudamericana/scoreboard${query}` },
+      { league: 'UEFA Champions League', sport: 'football', url: `https://site.api.espn.com/apis/site/v2/sports/soccer/uefa.champions/scoreboard${query}` },
+      { league: 'Liga 1 Perú', sport: 'football', url: `https://site.api.espn.com/apis/site/v2/sports/soccer/per.1/scoreboard${query}` },
+      { league: 'Liga Profesional Argentina', sport: 'football', url: `https://site.api.espn.com/apis/site/v2/sports/soccer/arg.1/scoreboard${query}` },
+      { league: 'Brasileirao Serie A', sport: 'football', url: `https://site.api.espn.com/apis/site/v2/sports/soccer/bra.1/scoreboard${query}` },
+      { league: 'MLB Grandes Ligas', sport: 'baseball', url: `https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard${query}` },
+      { league: 'WNBA Baloncesto', sport: 'basketball', url: `https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/scoreboard${query}` }
     ];
   }
 
