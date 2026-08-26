@@ -1,0 +1,44 @@
+{
+  "events": {},
+  "signals": {
+    "SIG_20260826_004": {
+      "signal_id": "SIG_20260826_004",
+      "event_id": "EVT_20260826_SUN_SKY",
+      "provider_event_id": "456",
+      "sport": "basketball",
+      "league": "WNBA",
+      "home_team": "Connecticut Sun",
+      "away_team": "Chicago Sky",
+      "event_start_utc": "2026-08-26T12:06:25.709Z",
+      "event_start_local": "Hoy 18:00",
+      "market_type": "POINT_SPREAD",
+      "selection": "Connecticut Sun -4.5 Puntos",
+      "line": -4.5,
+      "odds": 1.9,
+      "fair_odds": 1.7,
+      "edge_percentage": 11.8,
+      "confidence": 72,
+      "risk_level": "MEDIO",
+      "recommended_stake_units": 1.5,
+      "recommended_stake_soles": 75,
+      "analysis_summary": "Análisis Spread",
+      "reasoning_bullet_points": [
+        "Razón 1"
+      ],
+      "status": "PENDING",
+      "created_at_utc": "2026-08-26T12:06:25.709Z",
+      "published_at_utc": null,
+      "telegram_message_id": null,
+      "result_status": "UNRESOLVED",
+      "settled_at_utc": null,
+      "actual_home_score": null,
+      "actual_away_score": null,
+      "settlement_reason": null,
+      "units_net_profit": 0,
+      "soles_net_profit": 0
+    }
+  },
+  "settledSignalsHistory": [],
+  "lastRefreshTimestamp": "2026-08-26T12:06:25.710Z",
+  "dataAgeSeconds": 0
+}
