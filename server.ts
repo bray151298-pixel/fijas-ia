@@ -96,6 +96,7 @@ app.get("/health", async (req, res) => {
   res.status(statusCode).json(report);
 });
 
+
 app.get("/api/signals/all", (req, res) => {
   const db = DatabaseRepository.getInstance();
   res.json({ ok: true, signals: db.getAllSignals() });
@@ -104,6 +105,15 @@ app.get("/api/signals/all", (req, res) => {
 app.get("/api/signals/pending", (req, res) => {
   const db = DatabaseRepository.getInstance();
   res.json({ ok: true, pending: db.getPendingSignals() });
+});
+
+app.get("/api/signals/:id", (req, res) => {
+  const db = DatabaseRepository.getInstance();
+  const signal = db.getSignal(req.params.id);
+  if (!signal) {
+    return res.status(404).json({ ok: false, error: "Signal not found", signal_id: req.params.id });
+  }
+  res.json({ ok: true, signal });
 });
 
 app.get("/api/audit/statistics", (req, res) => {
