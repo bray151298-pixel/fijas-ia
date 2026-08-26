@@ -12,3 +12,10 @@ credentials.json
 *.sqlite3
 data/*.sqlite
 data/*.sqlite3
+
+.venv/
+venv/
+__pycache__/
+*.pyc
+node_modules/
+app_web/node_modules/

@@ -86,7 +86,12 @@ export class SettlementEngine {
       }
     } else if (signal.sport === 'baseball') {
       if (market === 'MONEYLINE') {
-        if (selection.includes(event.home_team)) {
+        const selLower = selection.toLowerCase();
+        const homeLower = event.home_team.toLowerCase();
+        const homeWords = homeLower.split(' ');
+        const isHome = homeWords.some(w => w.length > 3 && selLower.includes(w)) || selLower.includes(homeLower);
+        
+        if (isHome) {
           if (home > away) {
             resultStatus = 'WON';
             reason = `GANADO: ${event.home_team} venció ${home} a ${away} a ${event.away_team}.`;

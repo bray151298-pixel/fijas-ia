@@ -1,174 +1,112 @@
 /**
  * AnalysisEngine.ts
- * Quantitative Mathematical Engine (Poisson Distribution, Value Betting, Kelly Criterion)
- * Combines deterministic statistics with AIAnalysisProvider for structured context without hallucinating data.
+ * 100% Deterministic Quantitative Predictive Engine for FIJAS IA.
+ * Zero hardcoding: Computes Dixon-Coles Poisson distributions, evaluates real bookmaker odds,
+ * validates data quality scores, and enforces NO_EMIT_SIGNAL on unproven mathematical edges.
  */
 
 import { SportEvent } from './EventNormalizer';
-import { MarketType } from './MarketRulesRegistry';
-import { SignalEntity } from './SignalEntity';
+import { SignalEntity, SignalEnvironment } from './SignalEntity';
 import { TimeService } from './TimeService';
-
-export interface QuantitativeOutput {
-  market_type: MarketType;
-  selection: string;
-  line: number | null;
-  odds: number;
-  fair_odds: number;
-  edge_percentage: number;
-  confidence: number;
-  risk_level: 'BAJO' | 'MEDIO' | 'ALTO';
-  recommended_stake_units: number;
-  recommended_stake_soles: number;
-  analysis_summary: string;
-  reasoning_bullet_points: string[];
-}
+import { PoissonEngine } from './PoissonEngine';
+import { ProbabilityEngine } from './ProbabilityEngine';
+import { OddsProvider } from './OddsProvider';
+import { MarketEvaluator } from './MarketEvaluator';
+import { DataQualityValidator } from './DataQualityValidator';
+import { SignalDecisionEngine, DecisionResult } from './SignalDecisionEngine';
+import { HistoricalStatsRepository } from './HistoricalStatsRepository';
 
 export class AnalysisEngine {
-  public static analyzeEvent(event: SportEvent): QuantitativeOutput {
-    const sport = event.sport;
-    
-    if (sport === 'baseball') {
-      return this.analyzeBaseball(event);
-    } else if (sport === 'basketball') {
-      return this.analyzeBasketball(event);
-    } else if (sport === 'tennis') {
-      return this.analyzeTennis(event);
-    } else if (sport === 'mma') {
-      return this.analyzeMMA(event);
+  public static readonly MODEL_VERSION = 'Poisson-DixonColes-v2.5';
+
+  /**
+   * Evaluates a sports event with the complete quantitative pipeline
+   */
+  public static async analyzeEventAsync(event: SportEvent): Promise<{
+    decisionResult: DecisionResult;
+    dataQualityScore: number;
+    sampleSize: number;
+    lambdaHome: number;
+    lambdaAway: number;
+  }> {
+    const oddsProvider = OddsProvider.getInstance();
+    const statsRepo = HistoricalStatsRepository.getInstance();
+
+    // 1. Fetch real bookmaker odds
+    const oddsList = await oddsProvider.getOddsForEvent(event);
+
+    // 2. Validate data quality
+    const dqReport = DataQualityValidator.validate(event, oddsList);
+    if (!dqReport.isValid) {
+      return {
+        decisionResult: {
+          decision: 'NO_EMIT_SIGNAL',
+          decision_reason: dqReport.reason,
+          selectedCandidate: null,
+          recommendedStakeUnits: 0,
+          recommendedStakeSoles: 0,
+          riskLevel: 'ALTO',
+          analysisSummary: dqReport.reason,
+          reasoningBulletPoints: [dqReport.reason]
+        },
+        dataQualityScore: dqReport.score,
+        sampleSize: dqReport.sampleSize,
+        lambdaHome: 0,
+        lambdaAway: 0
+      };
     }
 
-    return this.analyzeFootball(event);
-  }
+    // 3. Calculate Poisson expected goals (lambda_home, lambda_away) from historical stats
+    const xg = PoissonEngine.calculateExpectedGoals(event.home_team, event.away_team, event.league);
+    const scoreMatrix = PoissonEngine.generateScoreMatrix(xg.lambdaHome, xg.lambdaAway);
+    const probs = ProbabilityEngine.calculateFromMatrix(scoreMatrix);
 
-  private static analyzeFootball(event: SportEvent): QuantitativeOutput {
-    const odds = 1.75;
-    const fairOdds = 1.55;
-    const edge = Number((((odds / fairOdds) - 1) * 100).toFixed(1)); // +12.9%
-    const confidence = 75.5;
+    // 4. Evaluate all available markets against real bookmaker odds
+    const candidates = MarketEvaluator.evaluateAll(event.home_team, event.away_team, probs, oddsList);
+
+    // 5. Run multi-criteria decision & fractional Kelly stake sizing
+    const decisionResult = SignalDecisionEngine.decide(candidates, event.home_team, event.away_team, xg);
 
     return {
-      market_type: 'DOUBLE_CHANCE',
-      selection: `${event.home_team} Ganador o Empate (1X) & Más de 1.5 Goles`,
-      line: 1.5,
-      odds,
-      fair_odds: fairOdds,
-      edge_percentage: edge > 0 ? edge : 11.5,
-      confidence,
-      risk_level: 'MEDIO',
-      recommended_stake_units: 2.0,
-      recommended_stake_soles: 100.0,
-      analysis_summary: `${event.home_team} presenta una ventaja de 2.15 xG en condición de local frente a ${event.away_team} con solidez en transiciones defensivas.`,
-      reasoning_bullet_points: [
-        `${event.home_team} promedia 1.85 goles anotados en sus últimos 6 compromisos oficiales.`,
-        `Modelo de Poisson proyecta 75.5% de probabilidad para doble oportunidad 1X y línea over 1.5 goles.`,
-        `Cuota de mercado (@${odds}) ofrece un desajuste positivo (+EV) del ${edge > 0 ? edge : 11.5}% contra cuota justa (@${fairOdds}).`
-      ]
+      decisionResult,
+      dataQualityScore: dqReport.score,
+      sampleSize: dqReport.sampleSize,
+      lambdaHome: xg.lambdaHome,
+      lambdaAway: xg.lambdaAway
     };
   }
 
-  private static analyzeBaseball(event: SportEvent): QuantitativeOutput {
-    const odds = 1.72;
-    const fairOdds = 1.54;
-    const edge = Number((((odds / fairOdds) - 1) * 100).toFixed(1)); // +11.7%
-    const confidence = 73.0;
+  /**
+   * Synchronous adapter (returns null or NO_BET Signal if conditions not met)
+   */
+  public static createSignalFromEvent(
+    event: SportEvent, 
+    index: number = 1, 
+    env: SignalEnvironment = 'PRODUCTION'
+  ): SignalEntity | null {
+    // 1. Calculate Poisson directly
+    const xg = PoissonEngine.calculateExpectedGoals(event.home_team, event.away_team, event.league);
+    const scoreMatrix = PoissonEngine.generateScoreMatrix(xg.lambdaHome, xg.lambdaAway);
+    const probs = ProbabilityEngine.calculateFromMatrix(scoreMatrix);
 
-    return {
-      market_type: 'MONEYLINE',
-      selection: `${event.home_team} Ganador (Moneyline)`,
-      line: null,
-      odds,
-      fair_odds: fairOdds,
-      edge_percentage: edge > 0 ? edge : 11.7,
-      confidence,
-      risk_level: 'MEDIO',
-      recommended_stake_units: 2.0,
-      recommended_stake_soles: 100.0,
-      analysis_summary: `${event.home_team} cuenta con ventaja en la rotación de lanzadores abridores (ERA 2.85) frente a ${event.away_team}.`,
-      reasoning_bullet_points: [
-        `Diferencial de pitcheo abridor y bullpen favorable a ${event.home_team} en WHIP (1.12 vs 1.38).`,
-        `Porcentaje de embasado (OBP .335) superior en las últimas 3 series disputadas.`,
-        `Cuota ofrecida (@${odds}) supera la probabilidad matemática estimada (Edge +${edge > 0 ? edge : 11.7}%).`
-      ]
-    };
-  }
+    // 2. Map odds
+    const oddsProvider = OddsProvider.getInstance();
+    // Synchronous access to calibrated real odds
+    const oddsList = (oddsProvider as any).bookmakerOddsMap?.[`${event.home_team} vs ${event.away_team}`] || [];
 
-  private static analyzeBasketball(event: SportEvent): QuantitativeOutput {
-    const odds = 1.90;
-    const fairOdds = 1.70;
-    const edge = Number((((odds / fairOdds) - 1) * 100).toFixed(1));
-    const confidence = 71.0;
+    const dqReport = DataQualityValidator.validate(event, oddsList);
+    if (!dqReport.isValid) {
+      return null; // Enforces NO_EMIT_SIGNAL
+    }
 
-    return {
-      market_type: 'POINT_SPREAD',
-      selection: `${event.home_team} -4.5 Puntos (Spread Hándicap)`,
-      line: -4.5,
-      odds,
-      fair_odds: fairOdds,
-      edge_percentage: edge > 0 ? edge : 11.8,
-      confidence,
-      risk_level: 'MEDIO',
-      recommended_stake_units: 1.5,
-      recommended_stake_soles: 75.0,
-      analysis_summary: `${event.home_team} mantiene un diferencial de rebotes ofensivos (+6.8) y ritmo anotador propicio para cubrir el spread.`,
-      reasoning_bullet_points: [
-        `${event.home_team} cubre la línea de -4.5 en el 72% de partidos como local ante rivales de su conferencia.`,
-        `Ritmo de posesiones proyectado en 98.5 con alta eficiencia en tiro efectivo (eFG% 54.2%).`,
-        `Kelly Criterion sugiere stake conservador de 1.5 unidades.`
-      ]
-    };
-  }
+    const candidates = MarketEvaluator.evaluateAll(event.home_team, event.away_team, probs, oddsList);
+    const decision = SignalDecisionEngine.decide(candidates, event.home_team, event.away_team, xg);
 
-  private static analyzeTennis(event: SportEvent): QuantitativeOutput {
-    const odds = 1.80;
-    const fairOdds = 1.60;
-    const edge = 12.5;
+    if (decision.decision !== 'APPROVED' || !decision.selectedCandidate) {
+      return null; // Enforces NO_BET when EV is negative or below threshold
+    }
 
-    return {
-      market_type: 'MONEYLINE',
-      selection: `${event.home_team} Ganador de Partido`,
-      line: null,
-      odds,
-      fair_odds: fairOdds,
-      edge_percentage: edge,
-      confidence: 74.0,
-      risk_level: 'MEDIO',
-      recommended_stake_units: 1.5,
-      recommended_stake_soles: 75.0,
-      analysis_summary: `Mayor efectividad de primer servicio (78%) y puntos ganados con segundo saque para ${event.home_team}.`,
-      reasoning_bullet_points: [
-        `Dominio en el enfrentamiento directo histórico (H2H 3-1).`,
-        `Superficie que maximiza la velocidad de saque y juego de fondo de ${event.home_team}.`
-      ]
-    };
-  }
-
-  private static analyzeMMA(event: SportEvent): QuantitativeOutput {
-    const odds = 1.85;
-    const fairOdds = 1.62;
-    const edge = 14.2;
-
-    return {
-      market_type: 'OVER_UNDER_ROUNDS',
-      selection: `Más de 1.5 Asaltos Totales`,
-      line: 1.5,
-      odds,
-      fair_odds: fairOdds,
-      edge_percentage: edge,
-      confidence: 76.0,
-      risk_level: 'MEDIO',
-      recommended_stake_units: 2.0,
-      recommended_stake_soles: 100.0,
-      analysis_summary: `Ambos peleadores poseen estilos de alta resistencia cardiovascular y bajo porcentaje de finalización temprana.`,
-      reasoning_bullet_points: [
-        `80% de combates previos del contendiente principal llegaron a la decisión o al tercer round.`,
-        `Defensa de derribos superior al 85% anticipa combate prolongado de intercambio técnico.`
-      ]
-    };
-  }
-
-  public static createSignalFromEvent(event: SportEvent, index: number = 1, env: 'PRODUCTION' | 'TEST' | 'HISTORICAL' = 'PRODUCTION'): SignalEntity {
-    const analysis = this.analyzeEvent(event);
+    const pick = decision.selectedCandidate;
     const dateKey = TimeService.getLimaDateIsoFormat(event.start_time_utc);
     const indexStr = String(index).padStart(3, '0');
     const signalId = `SIG_${dateKey}_${indexStr}`;
@@ -184,19 +122,32 @@ export class AnalysisEngine {
       away_team: event.away_team,
       event_start_utc: event.start_time_utc,
       event_start_local: event.start_time_local,
-      market_type: analysis.market_type,
-      selection: analysis.selection,
-      line: analysis.line,
-      odds: analysis.odds,
-      fair_odds: analysis.fair_odds,
-      edge_percentage: analysis.edge_percentage,
-      confidence: analysis.confidence,
-      risk_level: analysis.risk_level,
-      recommended_stake_units: analysis.recommended_stake_units,
-      recommended_stake_soles: analysis.recommended_stake_soles,
-      analysis_summary: analysis.analysis_summary,
-      reasoning_bullet_points: analysis.reasoning_bullet_points,
+      market_type: pick.market_type,
+      selection: pick.selection,
+      line: pick.line,
+      odds: pick.odds,
+      fair_odds: pick.fair_odds,
+      edge_percentage: pick.edge_percentage,
+      confidence: pick.confidence,
+      risk_level: decision.riskLevel,
+      recommended_stake_units: decision.recommendedStakeUnits,
+      recommended_stake_soles: decision.recommendedStakeSoles,
+      analysis_summary: decision.analysisSummary,
+      reasoning_bullet_points: decision.reasoningBulletPoints,
       status: 'PENDING',
+      model_version: this.MODEL_VERSION,
+      data_timestamp: TimeService.nowUtc(),
+      odds_timestamp: oddsList[0]?.timestamp_utc || TimeService.nowUtc(),
+      bookmaker: pick.bookmaker,
+      model_probability: pick.model_probability,
+      implied_probability: pick.implied_probability,
+      expected_value: pick.expected_value,
+      data_quality_score: dqReport.score,
+      historical_sample_size: dqReport.sampleSize,
+      lambda_home: xg.lambdaHome,
+      lambda_away: xg.lambdaAway,
+      decision: 'APPROVED',
+      decision_reason: decision.decision_reason,
       created_at_utc: TimeService.nowUtc(),
       published_at_utc: null,
       telegram_message_id: null,

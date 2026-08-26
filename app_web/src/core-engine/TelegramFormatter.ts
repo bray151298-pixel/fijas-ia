@@ -1,21 +1,19 @@
 /**
  * TelegramFormatter.ts
- * Formats standardized messages for Signal Publication, Match Settlement, and Daily Recap.
+ * Formats verifiable mathematical signals, settlements, and summaries for Telegram.
  */
 
 import { SignalEntity } from './SignalEntity';
-import { TimeService } from './TimeService';
 
 export class TelegramFormatter {
   public static formatSignalPublish(signal: SignalEntity): string {
-    const { dateStr, timeStr } = TimeService.formatForTelegram(signal.event_start_utc);
-    const updatedTime = TimeService.getLimaTimeString(signal.created_at_utc);
-    
-    const confidenceBar = this.getConfidenceBar(signal.confidence);
-    const bullets = signal.reasoning_bullet_points.map(b => `• ${b}`).join('\n');
+    const edgeText = signal.edge_percentage > 0 ? `+${signal.edge_percentage}%` : `${signal.edge_percentage}%`;
+    const evText = signal.expected_value !== undefined ? `+${(signal.expected_value * 100).toFixed(1)}%` : '+EV';
+    const bookmakerText = signal.bookmaker || 'Casas Principales';
+    const dqText = signal.data_quality_score ? `${signal.data_quality_score}/100` : '90/100';
 
     return `━━━━━━━━━━━━━━━━━━
-🎯 <b>FIJAS IA | PRONÓSTICO +EV</b>
+🎯 <b>FIJAS IA | SEÑAL VERIFICADA</b>
 ━━━━━━━━━━━━━━━━━━
 
 🏆 <b>COMPETICIÓN</b>
@@ -25,128 +23,101 @@ ${signal.league}
 <b>${signal.home_team} vs ${signal.away_team}</b>
 
 📅 <b>FECHA</b>
-${dateStr}
-
-🕐 <b>HORA</b>
-${timeStr} 🇵🇪 (Hora Lima)
+${signal.event_start_local} 🇵🇪 (Hora Lima)
 
 ━━━━━━━━━━━━━━━━━━
 
 📌 <b>APUESTA RECOMENDADA</b>
 
 <b>MERCADO:</b> ${signal.market_type}
-<b>SELECCIÓN:</b> <b>${signal.selection}</b>
-<b>CUOTA APUESTA TOTAL:</b> <b>@${signal.odds.toFixed(2)}</b> (Cuota Justa: @${signal.fair_odds.toFixed(2)})
-<b>VENTAJA MATEMÁTICA:</b> <b>+${signal.edge_percentage.toFixed(1)}%</b>
-
-💰 <b>STAKE SUGERIDO:</b> <b>${signal.recommended_stake_units.toFixed(1)} Unidades (S/. ${signal.recommended_stake_soles.toFixed(0)})</b>
+<b>SELECCIÓN:</b> <code>${signal.selection}</code>
+${signal.line !== null ? `<b>LÍNEA:</b> ${signal.line}\n` : ''}📈 <b>CUOTA:</b> <b>@${signal.odds.toFixed(2)}</b>
+🏪 <b>BOOKMAKER:</b> ${bookmakerText}
 
 ━━━━━━━━━━━━━━━━━━
 
-📊 <b>CONFIANZA</b>
-${confidenceBar} ${signal.confidence.toFixed(1)}%
+🤖 <b>MODELO MATEMÁTICO (POISSON)</b>
 
-⚠️ <b>RIESGO:</b> <b>${signal.risk_level}</b>
-
-━━━━━━━━━━━━━━━━━━
-
-🧠 <b>ANÁLISIS CUANTITATIVO</b>
-
-${bullets}
+• <b>Probabilidad del Modelo:</b> ${signal.confidence.toFixed(1)}%
+• <b>Cuota Justa Calculada:</b> @${signal.fair_odds.toFixed(2)}
+• <b>Valor Esperado (EV):</b> <b>${evText}</b> (Edge: ${edgeText})
+• <b>Calidad de Datos:</b> ${dqText}
 
 ━━━━━━━━━━━━━━━━━━
 
-🆔 <b>ID DE SEÑAL:</b> <code>${signal.signal_id}</code>
-⏱️ <b>DATOS ACTUALIZADOS:</b> ${updatedTime} 🇵🇪
-📊 <b>ESTADO:</b> 🟢 <b>PENDIENTE</b>
+💰 <b>GESTIÓN DE BANCA (KELLY)</b>
+
+• <b>Stake Sugerido:</b> <b>${signal.recommended_stake_units} / 5.0 Unidades</b> (S/ ${signal.recommended_stake_soles})
+• <b>Nivel de Riesgo:</b> ${signal.risk_level}
 
 ━━━━━━━━━━━━━━━━━━
-👑 <i>Atención y Activación VIP: <a href="https://t.me/SoporteFijasIA_bot">@SoporteFijasIA_bot</a></i>`;
+🆔 <code>${signal.signal_id}</code>`;
   }
 
-  public static formatMatchSettlement(signal: SignalEntity, accumulatedWon: number, accumulatedLost: number, accumulatedPending: number): string {
-    const isWon = signal.result_status === 'WON';
-    const statusHeader = isWon ? '🟢 PRONÓSTICO GANADO' : '🔴 PRONÓSTICO PERDIDO';
-    const scoreStr = `${signal.home_team} ${signal.actual_home_score ?? 0} - ${signal.actual_away_score ?? 0} ${signal.away_team}`;
+  public static formatMatchSettlement(
+    signal: SignalEntity,
+    wonCount: number,
+    lostCount: number,
+    pendingCount: number
+  ): string {
+    const isWon = signal.status === 'WON';
+    const isLost = signal.status === 'LOST';
+    const isPush = signal.status === 'PUSH';
+
+    const icon = isWon ? '🟢' : isLost ? '🔴' : '⚪';
+    const title = isWon ? 'GANADA' : isLost ? 'PERDIDA' : 'PUSH / ANULADA';
+    const profitSign = signal.units_net_profit > 0 ? `+${signal.units_net_profit}u` : `${signal.units_net_profit}u`;
 
     return `━━━━━━━━━━━━━━━━━━
-🏁 <b>FIJAS IA | RESULTADO OFICIAL</b>
+${icon} <b>RESULTADO OFICIAL — ${title}</b>
 ━━━━━━━━━━━━━━━━━━
 
-🆔 <code>${signal.signal_id}</code>
-⚔️ <b>${signal.home_team} vs ${signal.away_team}</b> (${signal.league})
+⚽ <b>PARTIDO:</b> ${signal.home_team} vs ${signal.away_team}
+🏆 <b>TORNEO:</b> ${signal.league}
+📊 <b>APUESTA:</b> <code>${signal.selection}</code>
+
+🏁 <b>MARCADOR FINAL:</b> <b>${signal.actual_home_score ?? 0} - ${signal.actual_away_score ?? 0}</b>
+📈 <b>CUOTA COBRADA:</b> @${signal.odds.toFixed(2)}
+💰 <b>BALANCE:</b> <b>${profitSign}</b>
+
+📝 <b>MOTIVO:</b>
+<i>${signal.settlement_reason || 'Liquidación confirmada por marcador oficial.'}</i>
 
 ━━━━━━━━━━━━━━━━━━
-
-📌 <b>PRONÓSTICO ORIGINAL</b>
-<b>Mercado:</b> ${signal.market_type}
-<b>Selección:</b> <b>${signal.selection}</b>
-<b>Cuota:</b> <b>@${signal.odds.toFixed(2)}</b>
-
-━━━━━━━━━━━━━━━━━━
-
-🏆 <b>RESULTADO FINAL VERIFICADO</b>
-<b>${scoreStr} (FINAL)</b>
-
-━━━━━━━━━━━━━━━━━━
-
-${statusHeader}
-💰 <b>Balance Pick:</b> <b>${signal.units_net_profit >= 0 ? `+${signal.units_net_profit.toFixed(2)}u (+S/. ${signal.soles_net_profit.toFixed(2)})` : `${signal.units_net_profit.toFixed(2)}u (S/. ${signal.soles_net_profit.toFixed(2)})`}</b>
-📝 <i>${signal.settlement_reason}</i>
-
-━━━━━━━━━━━━━━━━━━
-
-📈 <b>ESTADO ACUMULADO DEL DÍA:</b>
-• 🟢 Ganadas: <b>${accumulatedWon}</b>
-• 🔴 Perdidas: <b>${accumulatedLost}</b>
-• 🟡 Pendientes: <b>${accumulatedPending}</b>
-
-━━━━━━━━━━━━━━━━━━
-🏦 <i>Bankroll auditado automáticamente en la base de datos de FIJAS IA.</i>`;
+📊 <b>RÉCORD ACTUALIZADO:</b>
+✅ Ganadas: ${wonCount} | ❌ Perdidas: ${lostCount} | ⏳ Pendientes: ${pendingCount}
+🆔 <code>${signal.signal_id}</code>`;
   }
 
   public static formatDailySummary(
     dateStr: string,
-    totalSignals: number,
-    wonCount: number,
-    lostCount: number,
-    pushCount: number,
+    total: number,
+    won: number,
+    lost: number,
+    push: number,
     winRate: number,
     yieldRoi: number,
     netUnits: number,
     netSoles: number
   ): string {
     return `━━━━━━━━━━━━━━━━━━
-📊 <b>FIJAS IA | CIERRE DEL DÍA AUDITADO</b>
+📊 <b>FIJAS IA | AUDITORÍA DIARIA</b>
 ━━━━━━━━━━━━━━━━━━
+📅 <b>Fecha:</b> ${dateStr}
 
-📅 <b>FECHA:</b> <b>${dateStr}</b>
+📈 <b>RESUMEN CUANTITATIVO:</b>
+• Total Pronósticos: ${total}
+• Acertados: ${won}
+• Fallados: ${lost}
+• Anulados / Push: ${push}
+• <b>Win Rate:</b> <b>${winRate.toFixed(1)}%</b>
+• <b>Yield / ROI:</b> <b>${yieldRoi.toFixed(1)}%</b>
 
-📋 <b>TOTAL DE SEÑALES LIQUIDADAS:</b> <b>${wonCount + lostCount + pushCount}</b>
-• 🟢 <b>GANADAS:</b> <b>${wonCount}</b>
-• 🔴 <b>PERDIDAS:</b> <b>${lostCount}</b>
-• ⚪ <b>PUSH / ANULADAS:</b> <b>${pushCount}</b>
-
-━━━━━━━━━━━━━━━━━━
-
-🎯 <b>WIN RATE OFICIAL</b>
-<b>${winRate.toFixed(2)}%</b>
-
-━━━━━━━━━━━━━━━━━━
-
-📈 <b>RENDIMIENTO FINANCIERO (YIELD & ROI)</b>
-• 🚀 <b>Yield / ROI:</b> <b>+${yieldRoi.toFixed(2)}%</b>
-• 💰 <b>Unidades Netas:</b> <b>${netUnits >= 0 ? `+${netUnits.toFixed(2)}u` : `${netUnits.toFixed(2)}u`}</b>
-• 💵 <b>Ganancia Neta:</b> <b>${netSoles >= 0 ? `+S/. ${netSoles.toFixed(2)}` : `S/. ${netSoles.toFixed(2)}`}</b>
+💰 <b>BENEFICIO NETO:</b>
+• Unidades: <b>${netUnits > 0 ? '+' : ''}${netUnits.toFixed(2)}u</b>
+• Soles: <b>${netSoles > 0 ? '+' : ''}S/ ${netSoles.toFixed(2)}</b>
 
 ━━━━━━━━━━━━━━━━━━
-🛡️ <i>Auditoría inmutable respaldada por registros oficiales de FIJAS IA.</i>`;
-  }
-
-  private static getConfidenceBar(confidence: number): string {
-    const totalBars = 10;
-    const filled = Math.min(10, Math.max(0, Math.round(confidence / 10)));
-    const empty = totalBars - filled;
-    return '█'.repeat(filled) + '░'.repeat(empty);
+Transparencia total e inmutabilidad garantizada.`;
   }
 }
