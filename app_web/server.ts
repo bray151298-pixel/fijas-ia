@@ -40,7 +40,19 @@ const app = express();
 // ==========================================
 // CORE ENGINE: AUDITABLE PERSISTENCE & HEALTH
 // ==========================================
-app.get("/health", (req, res) => {
+app.get("/health", async (req, res) => {
+  const dataEngine = DataUpdateEngine.getInstance();
+  const db = DatabaseRepository.getInstance();
+  
+  // Proactively refresh if data is older than 3 minutes
+  const stats = db.getAuditStatistics();
+  const ageSeconds = TimeService.getAgeSeconds(stats.lastRefreshUtc);
+  if (ageSeconds > 180 || db.getAllEvents().length === 0) {
+    try {
+      await dataEngine.fetchRealEvents();
+    } catch (e) {}
+  }
+
   const report = HealthService.getHealthReport();
   const statusCode = report.status === 'healthy' ? 200 : report.status === 'degraded' ? 200 : 503;
   res.status(statusCode).json(report);
@@ -4401,3 +4413,20 @@ async function runAutonomousSchedulerEngine() {
 
 setInterval(runAutonomousSchedulerEngine, 3 * 60 * 1000);
 setTimeout(runAutonomousSchedulerEngine, 2000);
+
+
+// -------------------------------------------------------------
+// IMMEDIATE PRODUCTION BOOTSTRAP SEQUENCE
+// -------------------------------------------------------------
+async function bootstrapProductionEngine() {
+  try {
+    console.log('[Boot] Initializing Core Engine with immediate real sports data fetch...');
+    const dataEngine = DataUpdateEngine.getInstance();
+    const db = DatabaseRepository.getInstance();
+    const events = await dataEngine.fetchRealEvents();
+    console.log(`[Boot] Core Engine successfully bootstrapped with ${events.length} live sports events.`);
+  } catch (err) {
+    console.error('[Boot] Core Engine bootstrap error:', err);
+  }
+}
+bootstrapProductionEngine();
