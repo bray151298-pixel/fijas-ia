@@ -1,10 +1,11 @@
 /**
  * TelegramFormatter.ts
- * Formats clean, concise, high-converting, professional mathematical signals for Telegram VIP.
+ * Formats clean, concise, high-converting, professional mathematical signals and parlays for Telegram VIP.
  * Removes visual clutter, embeds discreet tracking IDs, and highlights key actionable betting data.
  */
 
 import { SignalEntity } from './SignalEntity';
+import { ParlayEntity } from './ParlayEngine';
 
 export class TelegramFormatter {
   /**
@@ -35,6 +36,33 @@ ${sportIcon} <b>${signal.home_team} vs ${signal.away_team}</b>
 📊 <b>Modelo Poisson:</b> ${signal.confidence.toFixed(1)}% prob | <b>${evText}</b>
 ━━━━━━━━━━━━━━━━━━
 <code>#${signal.signal_id}</code>`;
+  }
+
+  /**
+   * Compact, High-+EV VIP Parlay (Combinada) Format
+   */
+  public static formatParlayPublish(parlay: ParlayEntity): string {
+    const evText = `+${(parlay.expected_value * 100).toFixed(1)}% EV`;
+    const probText = `${(parlay.joint_probability * 100).toFixed(1)}%`;
+    const bookmaker = parlay.legs[0]?.bookmaker || 'Bet365';
+
+    const legsText = parlay.legs.map((leg, i) => {
+      const icon = leg.sport === 'football' ? '⚽' : leg.sport === 'baseball' ? '⚾' : '🏀';
+      const shortTime = leg.event_start_local.replace(/\s*🇵🇪.*/, '');
+      return `• <b>Pierna ${i + 1}:</b> ${icon} ${leg.home_team} vs ${leg.away_team}
+  🎯 <code>${leg.selection}</code> (@${leg.odds.toFixed(2)}) • ${shortTime}`;
+    }).join('\n\n');
+
+    return `🔥 <b>FIJAS IA | ${parlay.title}</b>
+
+${legsText}
+
+━━━━━━━━━━━━━━━━━━
+📈 <b>Cuota Total:</b> <b>@${parlay.total_odds.toFixed(2)}</b> (${bookmaker})
+📊 <b>Probabilidad Conjunta:</b> ${probText} | <b>${evText}</b>
+💰 <b>Stake Parlay:</b> <b>${parlay.recommended_stake_units}u</b> (S/ ${parlay.recommended_stake_soles}) • ${parlay.risk_level}
+━━━━━━━━━━━━━━━━━━
+<code>#${parlay.parlay_id}</code>`;
   }
 
   /**

@@ -21,3 +21,4 @@ export * from './SettlementEngine';
 export * from './TelegramFormatter';
 export * from './HealthService';
 export * from './TestSuite';
+export * from './ParlayEngine';\n

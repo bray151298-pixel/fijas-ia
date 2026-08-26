@@ -4427,6 +4427,19 @@ async function runAutonomousSchedulerEngine() {
           const vipTelegramMsg = TelegramFormatter.formatSignalPublish(vipSig);
           await sendRawTelegramMessage(VIP_CHANNEL_ID, vipTelegramMsg, undefined, SIGNALS_BOT_TOKEN);
         }
+
+        // Publish Official VIP Parlay (+EV Combinada)
+        try {
+          const parlays = ParlayEngine.generateOptimalParlays(validSignalsToPublish);
+          if (parlays.length > 0) {
+            const topParlay = parlays[0];
+            const parlayMsg = TelegramFormatter.formatParlayPublish(topParlay);
+            await sendRawTelegramMessage(VIP_CHANNEL_ID, parlayMsg, undefined, SIGNALS_BOT_TOKEN);
+            console.log(`[AutoPilot 24/7] Official VIP Parlay published: ${topParlay.parlay_id}`);
+          }
+        } catch (parlayErr) {
+          console.error('[AutoPilot 24/7] Error generating parlay:', parlayErr);
+        }
       }
 
       saveSchedulerState();
