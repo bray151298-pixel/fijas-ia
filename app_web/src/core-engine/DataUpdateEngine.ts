@@ -1,6 +1,6 @@
 /**
  * DataUpdateEngine.ts
- * Coordinates real-time data fetching across multiple sports endpoints concurrently.
+ * Coordinates real-time data fetching across multiple sports endpoints via Fastly CDN & API edge.
  */
 
 import { SportEvent, EventNormalizer } from './EventNormalizer';
@@ -39,38 +39,39 @@ export class DataUpdateEngine {
   }
 
   public getEndpoints(dateIsoParam?: string): LeagueEndpoint[] {
-    const query = dateIsoParam ? `?dates=${dateIsoParam}` : '';
+    const dateQuery = dateIsoParam ? `&dates=${dateIsoParam}` : '';
     return [
-      { league: 'Copa Libertadores', sport: 'football', url: `https://site.api.espn.com/apis/site/v2/sports/soccer/conmebol.libertadores/scoreboard${query}` },
-      { league: 'Copa Sudamericana', sport: 'football', url: `https://site.api.espn.com/apis/site/v2/sports/soccer/conmebol.sudamericana/scoreboard${query}` },
-      { league: 'UEFA Champions League', sport: 'football', url: `https://site.api.espn.com/apis/site/v2/sports/soccer/uefa.champions/scoreboard${query}` },
-      { league: 'Liga 1 Perú', sport: 'football', url: `https://site.api.espn.com/apis/site/v2/sports/soccer/per.1/scoreboard${query}` },
-      { league: 'Liga Profesional Argentina', sport: 'football', url: `https://site.api.espn.com/apis/site/v2/sports/soccer/arg.1/scoreboard${query}` },
-      { league: 'Brasileirao Serie A', sport: 'football', url: `https://site.api.espn.com/apis/site/v2/sports/soccer/bra.1/scoreboard${query}` },
-      { league: 'MLB Grandes Ligas', sport: 'baseball', url: `https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard${query}` },
-      { league: 'WNBA Baloncesto', sport: 'basketball', url: `https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/scoreboard${query}` }
+      { league: 'Copa Libertadores', sport: 'football', url: `https://cdn.espn.com/core/soccer/scoreboard?league=conmebol.libertadores&xhr=1${dateQuery}` },
+      { league: 'Copa Sudamericana', sport: 'football', url: `https://cdn.espn.com/core/soccer/scoreboard?league=conmebol.sudamericana&xhr=1${dateQuery}` },
+      { league: 'UEFA Champions League', sport: 'football', url: `https://cdn.espn.com/core/soccer/scoreboard?league=uefa.champions&xhr=1${dateQuery}` },
+      { league: 'Liga 1 Perú', sport: 'football', url: `https://cdn.espn.com/core/soccer/scoreboard?league=per.1&xhr=1${dateQuery}` },
+      { league: 'Liga Profesional Argentina', sport: 'football', url: `https://cdn.espn.com/core/soccer/scoreboard?league=arg.1&xhr=1${dateQuery}` },
+      { league: 'Brasileirao Serie A', sport: 'football', url: `https://cdn.espn.com/core/soccer/scoreboard?league=bra.1&xhr=1${dateQuery}` },
+      { league: 'MLB Grandes Ligas', sport: 'baseball', url: `https://cdn.espn.com/core/mlb/scoreboard?xhr=1${dateQuery}` },
+      { league: 'WNBA Baloncesto', sport: 'basketball', url: `https://cdn.espn.com/core/wnba/scoreboard?xhr=1${dateQuery}` }
     ];
   }
 
   public async fetchRealEvents(dateIsoParam?: string): Promise<SportEvent[]> {
     const endpoints = this.getEndpoints(dateIsoParam);
 
-    const headers = {
-      'User-Agent': 'ESPN/7.4.0 (iPhone; iOS 16.0; Scale/3.00)',
-      'Accept': 'application/json, text/plain, */*'
-    };
-
     const fetchTasks = endpoints.map(async (ep) => {
       const epEvents: SportEvent[] = [];
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 8000);
-        const res = await fetch(ep.url, { headers, signal: controller.signal });
+        const res = await fetch(ep.url, {
+          headers: {
+            'Accept': 'application/json, text/plain, */*'
+          },
+          signal: controller.signal
+        });
         clearTimeout(timeoutId);
 
         if (res.ok) {
           const data = await res.json();
-          for (const raw of (data.events || [])) {
+          const rawEvents = data.content?.sbData?.events || data.events || [];
+          for (const raw of rawEvents) {
             try {
               const normalized = EventNormalizer.normalizeEspnEvent(raw, ep.league, ep.sport);
               if (normalized && normalized.home_team && normalized.away_team) {
@@ -82,7 +83,7 @@ export class DataUpdateEngine {
           }
         }
       } catch (errFetch) {
-        // Ignore single league network timeout
+        // Individual league error handled gracefully
       }
       return epEvents;
     });
