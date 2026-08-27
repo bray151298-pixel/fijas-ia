@@ -444,4 +444,28 @@ export class DatabaseRepository {
       lastRefreshUtc: this.state.lastRefreshTimestamp
     };
   }
+
+  /**
+   * Recovers PRODUCTION/TEST pending signals from PostgreSQL into the in-memory
+   * state so that the settlement engine can operate on the Primary Source of Truth
+   * even after a container restart (FASE 9 CASO 5/6). Non-destructive: existing
+   * in-memory entries are preserved (Postgres is only used as a fallback seed source).
+   */
+  public async syncFromPostgres(env: SignalEnvironment = 'PRODUCTION'): Promise<number> {
+    try {
+      const pgSignals = await this.pg.getAllSignals(env);
+      let synced = 0;
+      for (const sig of pgSignals) {
+        if (!(sig.signal_id in this.state.signals)) {
+          this.state.signals[sig.signal_id] = sig;
+          synced++;
+        }
+      }
+      if (synced > 0) this.saveState();
+      return synced;
+    } catch (e) {
+      console.warn('[DatabaseRepository] syncFromPostgres error:', (e as Error).message);
+      return 0;
+    }
+  }
 }

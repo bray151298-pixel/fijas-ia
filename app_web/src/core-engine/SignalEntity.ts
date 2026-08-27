@@ -65,6 +65,11 @@ export interface SignalEntity {
   decision?: 'APPROVED' | 'NO_BET' | 'NO_EMIT_SIGNAL';
   decision_reason?: string;
 
+  // Settlement retry / observability metadata (FASE 8 hardening)
+  settlement_attempts?: number;
+  last_settlement_attempt?: string | null;
+  last_settlement_error?: string | null;
+
   created_at_utc: string;
   published_at_utc: string | null;
   telegram_message_id: number | null;

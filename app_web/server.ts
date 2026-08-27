@@ -11,6 +11,8 @@ import {
   SettlementEngine,
   TelegramFormatter,
   HealthService,
+  PostgresRepository,
+  ParlayEngine,
   TestSuite
 } from './src/core-engine';
 
@@ -168,8 +170,8 @@ app.get("/api/audit/statistics", (req, res) => {
   res.json({ ok: true, statistics: db.getAuditStatistics() });
 });
 
-app.get("/api/tests/run", (req, res) => {
-  const results = TestSuite.runAllTests();
+app.get("/api/tests/run", async (req, res) => {
+  const results = await TestSuite.runAllTests();
   const allPassed = results.every(r => r.passed);
   res.json({ ok: allPassed, total: results.length, passed: results.filter(r => r.passed).length, results });
 });
@@ -192,14 +194,71 @@ if (geminiApiKey) {
   });
 }
 
-// Health check endpoint
+// Health check endpoint (FASE 10 observability)
 app.get("/api/health", (req, res) => {
-  res.json({
-    status: "ok",
-    geminiConfigured: Boolean(geminiApiKey),
-    engine: "Motor Neural de Inteligencia Deportiva (FIJAS IA v4.2)",
-    timestamp: new Date().toISOString()
-  });
+  try {
+    const db = DatabaseRepository.getInstance();
+    const dataEngine = DataUpdateEngine.getInstance();
+    const pgStatus = PostgresRepository.getInstance().getStatus();
+    const telemetry = dataEngine.getTelemetry();
+    const stats = db.getAuditStatistics();
+
+    const pendingSignals = db.getPendingSignals();
+    const lastTick = schedulerTelemetry.last_tick_utc;
+    const lastSuccessfulTick = schedulerTelemetry.last_successful_tick_utc;
+    const secondsSinceLastTick = lastTick ? Math.floor((Date.now() - new Date(lastTick).getTime()) / 1000) : null;
+
+    res.json({
+      status: "ok",
+      geminiConfigured: Boolean(geminiApiKey),
+      engine: "Motor Neural de Inteligencia Deportiva (FIJAS IA v4.2)",
+      process: {
+        uptime_seconds: Math.floor(process.uptime()),
+        started_at_utc: new Date(Date.now() - process.uptime() * 1000).toISOString()
+      },
+      scheduler: {
+        running: true,
+        interval_seconds: 180,
+        last_tick_utc: lastTick,
+        last_successful_tick_utc: lastSuccessfulTick,
+        seconds_since_last_tick: secondsSinceLastTick,
+        ticks: schedulerTelemetry.ticks,
+        last_settlement_attempt_utc: schedulerTelemetry.last_settlement_attempt_utc,
+        last_settlement_error: schedulerTelemetry.last_settlement_error
+      },
+      data_engine: {
+        fetched_events: telemetry.fetched_events,
+        persisted_events: telemetry.persisted_events,
+        last_successful_fetch_utc: telemetry.last_successful_fetch_utc
+      },
+      database: {
+        configured: pgStatus.configured,
+        connected: pgStatus.connected,
+        postgres_error: pgStatus.error,
+        storage_type: pgStatus.connected
+          ? 'PostgreSQL (Primary Source of Truth) + Dual-Layer Local Snapshot'
+          : 'Dual-Layer SQLite & JSON Persistent Store (Local Fallback)'
+      },
+      signals: {
+        production_total: stats.production.totalSignals,
+        production_pending: stats.production.pendingCount,
+        production_settled: stats.production.settledCount,
+        pending_settlements: pendingSignals.length,
+        historical_total: stats.historical.totalSignals
+      },
+      telegram: {
+        last_dispatch_utc: schedulerTelemetry.last_telegram_dispatch_utc,
+        last_error: schedulerTelemetry.last_telegram_error
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (e) {
+    res.json({
+      status: "degraded",
+      error: "OBSERVABILITY_ERROR: " + (e as Error).message,
+      timestamp: new Date().toISOString()
+    });
+  }
 });
 
 // Engine diagnostics endpoint
@@ -4281,6 +4340,17 @@ let lastAuditDay = "";
 const settledMatchesRegistry = new Set<string>();
 let isFirstSchedulerRun = true;
 
+// Scheduler observability telemetry (FASE 10)
+const schedulerTelemetry = {
+  last_tick_utc: null as string | null,
+  last_successful_tick_utc: null as string | null,
+  last_settlement_attempt_utc: null as string | null,
+  last_settlement_error: null as string | null,
+  last_telegram_dispatch_utc: null as string | null,
+  last_telegram_error: null as string | null,
+  ticks: 0
+};
+
 // Load persistent scheduler state to prevent duplicate broadcasts/settlements across restarts
 try {
   if (fs.existsSync(SCHEDULER_STATE_FILE)) {
@@ -4374,6 +4444,9 @@ async function runAutonomousSchedulerEngine() {
   try {
     const db = DatabaseRepository.getInstance();
     const dataEngine = DataUpdateEngine.getInstance();
+
+    schedulerTelemetry.last_tick_utc = TimeService.nowUtc();
+    schedulerTelemetry.ticks += 1;
     
     const nowLima = TimeService.nowLima();
     const currentHour = nowLima.getHours();
@@ -4382,6 +4455,7 @@ async function runAutonomousSchedulerEngine() {
 
     // 1. REFRESH REAL DATA FROM ESPN
     const realEvents = await dataEngine.fetchRealEvents();
+    schedulerTelemetry.last_successful_tick_utc = TimeService.nowUtc();
 
     // On cold boot: seed finished events to prevent duplicate spam
     if (isFirstSchedulerRun) {
@@ -4397,37 +4471,90 @@ async function runAutonomousSchedulerEngine() {
     }
 
     // 2. LIVE MATCH SETTLEMENT (EVALUATES EXACT ORIGINAL SIGNAL)
+    // Recover pending signals persisted in PostgreSQL (Primary Source of Truth) so the
+    // settlement engine operates correctly even after a container restart (FASE 9 CASO 5/6).
+    await db.syncFromPostgres('PRODUCTION').catch(() => {});
+
     const pendingSignals = db.getPendingSignals();
     for (const signal of pendingSignals) {
-      const matchEvent = realEvents.find(e => e.event_id === signal.event_id || (e.home_team && signal.home_team && e.home_team.toLowerCase() === signal.home_team.toLowerCase()));
-      
-      if (matchEvent && matchEvent.status === 'FINISHED' && !settledMatchesRegistry.has(signal.signal_id)) {
-        settledMatchesRegistry.add(signal.signal_id);
-        saveSchedulerState();
+      // Look up the official result first in the fresh live feed, then fall back to the
+      // persisted event store so prior-day matches are still settleable (FASE 8 #4-#6).
+      let matchEvent = realEvents.find(e => e.event_id === signal.event_id ||
+        (e.home_team && signal.home_team && e.home_team.toLowerCase() === signal.home_team.toLowerCase()));
 
-        const evaluation = SettlementEngine.settle(signal, matchEvent);
-        const settledSignal = db.settleSignal(
-          signal.signal_id,
-          evaluation.result_status,
-          matchEvent.home_score ?? 0,
-          matchEvent.away_score ?? 0,
-          evaluation.settlement_reason,
-          evaluation.units_net,
-          evaluation.soles_net
+      if (!matchEvent && signal.event_id) {
+        matchEvent = db.getEvent(signal.event_id);
+      }
+
+      // Increment / persist settlement attempt metadata for observability (FASE 8).
+      const attempts = (signal.settlement_attempts ?? 0) + 1;
+      signal.settlement_attempts = attempts;
+      signal.last_settlement_attempt = TimeService.nowUtc();
+      schedulerTelemetry.last_settlement_attempt_utc = signal.last_settlement_attempt;
+
+      if (!matchEvent) {
+        // Provider has no record of the event -> keep PENDING, do NOT mark LOST.
+        signal.last_settlement_error = 'EVENT_NOT_FOUND: El proveedor no retornó el evento para liquidar.';
+        schedulerTelemetry.last_settlement_error = signal.last_settlement_error;
+        db.saveSignal(signal);
+        continue;
+      }
+
+      if (matchEvent.status !== 'FINISHED') {
+        // Match not yet final -> keep PENDING (FASE 8 #5).
+        signal.last_settlement_error = null;
+        schedulerTelemetry.last_settlement_error = null;
+        db.saveSignal(signal);
+        continue;
+      }
+
+      if (settledMatchesRegistry.has(signal.signal_id)) {
+        continue; // Already settled once; do not re-settle (FASE 9 CASO 6).
+      }
+
+      const evaluation = SettlementEngine.settle(signal, matchEvent);
+      if (evaluation.result_status === 'UNRESOLVED') {
+        // Official score missing -> keep PENDING, never force LOST (FASE 8).
+        signal.last_settlement_error = evaluation.settlement_reason;
+        schedulerTelemetry.last_settlement_error = signal.last_settlement_error;
+        db.saveSignal(signal);
+        continue;
+      }
+
+      settledMatchesRegistry.add(signal.signal_id);
+      signal.last_settlement_error = null;
+      schedulerTelemetry.last_settlement_error = null;
+      saveSchedulerState();
+
+      const settledSignal = db.settleSignal(
+        signal.signal_id,
+        evaluation.result_status,
+        matchEvent.home_score ?? 0,
+        matchEvent.away_score ?? 0,
+        evaluation.settlement_reason,
+        evaluation.units_net,
+        evaluation.soles_net
+      );
+
+      if (settledSignal) {
+        const stats = db.getAuditStatistics();
+        const telegramSettlementMsg = TelegramFormatter.formatMatchSettlement(
+          settledSignal,
+          stats.production.wonCount,
+          stats.production.lostCount,
+          stats.production.pendingCount
         );
 
-        if (settledSignal) {
-          const stats = db.getAuditStatistics();
-          const telegramSettlementMsg = TelegramFormatter.formatMatchSettlement(
-            settledSignal,
-            stats.wonCount,
-            stats.lostCount,
-            stats.pendingCount
-          );
-
-          console.log(`[AutoPilot 24/7] Sending immutable settlement for ${settledSignal.signal_id}...`);
+        console.log(`[AutoPilot 24/7] Sending immutable settlement for ${settledSignal.signal_id}...`);
+        try {
           await sendRawTelegramMessage(PUBLIC_CHANNEL, telegramSettlementMsg, KEYBOARDS.channel_funnel, SIGNALS_BOT_TOKEN);
           await sendRawTelegramMessage(VIP_CHANNEL_ID, telegramSettlementMsg, undefined, SIGNALS_BOT_TOKEN);
+          schedulerTelemetry.last_telegram_dispatch_utc = TimeService.nowUtc();
+          schedulerTelemetry.last_telegram_error = null;
+        } catch (tgErr) {
+          // Persistence already happened; only Telegram delivery failed -> safe retry on next tick
+          schedulerTelemetry.last_telegram_error = (tgErr as Error)?.message || 'TELEGRAM_DELIVERY_ERROR';
+          console.error(`[AutoPilot 24/7] Telegram settlement delivery failed for ${settledSignal.signal_id}:`, tgErr);
         }
       }
     }
@@ -4505,14 +4632,14 @@ async function runAutonomousSchedulerEngine() {
       const stats = db.getAuditStatistics();
       const dailySummaryMsg = TelegramFormatter.formatDailySummary(
         todayStr,
-        stats.totalSignals,
-        stats.wonCount,
-        stats.lostCount,
-        stats.pushCount,
-        stats.winRate,
-        stats.yieldRoi,
-        stats.netUnitsProfit,
-        stats.netProfitSoles
+        stats.production.totalSignals,
+        stats.production.wonCount,
+        stats.production.lostCount,
+        stats.production.pushCount,
+        stats.production.winRate,
+        stats.production.yieldRoi,
+        stats.production.netUnitsProfit,
+        stats.production.netProfitSoles
       );
 
       await sendRawTelegramMessage(PUBLIC_CHANNEL, dailySummaryMsg, KEYBOARDS.channel_funnel, SIGNALS_BOT_TOKEN);

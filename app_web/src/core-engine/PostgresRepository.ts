@@ -130,6 +130,9 @@ export class PostgresRepository {
         settlement_reason TEXT,
         units_net_profit NUMERIC(8,2) DEFAULT 0,
         soles_net_profit NUMERIC(10,2) DEFAULT 0,
+        settlement_attempts INT DEFAULT 0,
+        last_settlement_attempt TIMESTAMPTZ,
+        last_settlement_error TEXT,
         updated_at_utc TIMESTAMPTZ DEFAULT NOW()
       );
       CREATE INDEX IF NOT EXISTS idx_signals_env ON signals(environment);
@@ -172,6 +175,11 @@ export class PostgresRepository {
       );
     `);
 
+    // Idempotent migrations for settlement-retry observability columns (FASE 8)
+    await client.query(`ALTER TABLE signals ADD COLUMN IF NOT EXISTS settlement_attempts INT DEFAULT 0;`);
+    await client.query(`ALTER TABLE signals ADD COLUMN IF NOT EXISTS last_settlement_attempt TIMESTAMPTZ;`);
+    await client.query(`ALTER TABLE signals ADD COLUMN IF NOT EXISTS last_settlement_error TEXT;`);
+
     console.log('[PostgresRepository] Schema tables verified and ready.');
   }
 
@@ -194,10 +202,12 @@ export class PostgresRepository {
         recommended_stake_units, recommended_stake_soles, analysis_summary,
         reasoning_bullet_points, status, created_at_utc, published_at_utc,
         telegram_message_id, result_status, settled_at_utc, actual_home_score,
-        actual_away_score, settlement_reason, units_net_profit, soles_net_profit, updated_at_utc
+        actual_away_score, settlement_reason, units_net_profit, soles_net_profit,
+        settlement_attempts, last_settlement_attempt, last_settlement_error, updated_at_utc
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16,
-        $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, NOW()
+        $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33,
+        $34, $35, $36, NOW()
       )
       ON CONFLICT (signal_id) DO UPDATE SET
         status = EXCLUDED.status,
@@ -210,6 +220,9 @@ export class PostgresRepository {
         soles_net_profit = EXCLUDED.soles_net_profit,
         telegram_message_id = EXCLUDED.telegram_message_id,
         published_at_utc = EXCLUDED.published_at_utc,
+        settlement_attempts = EXCLUDED.settlement_attempts,
+        last_settlement_attempt = EXCLUDED.last_settlement_attempt,
+        last_settlement_error = EXCLUDED.last_settlement_error,
         updated_at_utc = NOW();
     `;
 
@@ -247,7 +260,10 @@ export class PostgresRepository {
         signal.actual_away_score,
         signal.settlement_reason,
         signal.units_net_profit,
-        signal.soles_net_profit
+        signal.soles_net_profit,
+        signal.settlement_attempts ?? 0,
+        signal.last_settlement_attempt ?? null,
+        signal.last_settlement_error ?? null
       ]);
     } catch (err) {
       console.warn(`[PostgresRepository] Error saving signal ${signal.signal_id}:`, (err as Error).message);
@@ -341,7 +357,10 @@ export class PostgresRepository {
       actual_away_score: row.actual_away_score !== null ? Number(row.actual_away_score) : null,
       settlement_reason: row.settlement_reason,
       units_net_profit: Number(row.units_net_profit || 0),
-      soles_net_profit: Number(row.soles_net_profit || 0)
+      soles_net_profit: Number(row.soles_net_profit || 0),
+      settlement_attempts: row.settlement_attempts !== null ? Number(row.settlement_attempts) : 0,
+      last_settlement_attempt: row.last_settlement_attempt ? new Date(row.last_settlement_attempt).toISOString() : null,
+      last_settlement_error: row.last_settlement_error || null
     };
   }
 }

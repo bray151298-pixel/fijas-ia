@@ -27,7 +27,7 @@ export interface TestCaseResult {
 }
 
 export class TestSuite {
-  public static runAllTests(): TestCaseResult[] {
+  public static async runAllTests(): Promise<TestCaseResult[]> {
     const results: TestCaseResult[] = [];
 
     // CASO 1: Partido de ayer -> REJECTED / STALE_EVENT
@@ -303,7 +303,7 @@ export class TestSuite {
       title: 'MarketEvaluator: Cálculo exacto de Expected Value (+EV)',
       passed: isEvExact,
       expected: `EV = (${candidate.model_probability} * ${candidate.odds}) - 1 = ${calculatedEv}`,
-      actual: `EV obtenido = ${candidate.expected_value} (Fair Odds = @${candidate.fairOdds})`
+      actual: `EV obtenido = ${candidate.expected_value} (Fair Odds = @${candidate.fair_odds})`
     });
 
     // CASO 13: Fractional Kelly Stake Sizing within hard limits [1.0u, 2.5u]
@@ -315,6 +315,148 @@ export class TestSuite {
       passed: isKellyValid,
       expected: '0.0u <= stake_units <= 2.5u',
       actual: `Decision: ${decision.decision}, Stake: ${decision.recommendedStakeUnits}u (S/ ${decision.recommendedStakeSoles})`
+    });
+
+    // ── FASE 9 / FASE 10: SETTLEMENT GUARANTEES ──────────────────────────────
+
+    // CASO 14 (REGRESION INCIDENTE 26/08): River Plate 1-1 I. Santa Fe MONEYLINE local -> LOST.
+    const riverSignal: SignalEntity = {
+      signal_id: 'SIG_TEST_RIVER_ML',
+      environment: 'TEST',
+      event_id: 'EVT_TEST_RIVER_SANTAFE',
+      provider_event_id: 'RIV-STA',
+      sport: 'football',
+      league: 'Copa Sudamericana',
+      home_team: 'River Plate',
+      away_team: 'Independiente Santa Fe',
+      event_start_utc: TimeService.nowUtc(),
+      event_start_local: 'Hoy 19:30',
+      market_type: 'MONEYLINE',
+      selection: 'River Plate Ganador (1)',
+      line: null,
+      odds: 1.48,
+      fair_odds: 1.44,
+      edge_percentage: 2.8,
+      confidence: 60.0,
+      risk_level: 'BAJO',
+      recommended_stake_units: 1.0,
+      recommended_stake_soles: 50.0,
+      analysis_summary: 'Test settlement',
+      reasoning_bullet_points: [],
+      status: 'PENDING',
+      created_at_utc: TimeService.nowUtc(),
+      published_at_utc: null,
+      telegram_message_id: null,
+      result_status: 'UNRESOLVED',
+      settled_at_utc: null,
+      actual_home_score: null,
+      actual_away_score: null,
+      settlement_reason: null,
+      units_net_profit: 0,
+      soles_net_profit: 0
+    };
+    const riverEvent: SportEvent = {
+      event_id: 'EVT_TEST_RIVER_SANTAFE',
+      provider: 'espn',
+      provider_event_id: 'RIV-STA',
+      sport: 'football',
+      league: 'Copa Sudamericana',
+      home_team: 'River Plate',
+      away_team: 'Independiente Santa Fe',
+      start_time_utc: TimeService.nowUtc(),
+      start_time_local: 'Hoy 19:30',
+      status: 'FINISHED',
+      home_score: 1,
+      away_score: 1,
+      period_detail: 'FT-Pens',
+      last_updated_utc: TimeService.nowUtc(),
+      data_age_seconds: 0
+    };
+    const c14 = SettlementEngine.settle(riverSignal, riverEvent);
+    results.push({
+      caseId: 'CASO_14',
+      title: 'REG. River Plate 1-1 (MONEYLINE local) debe liquidar LOST, no quedar sin liquidar',
+      passed: c14.result_status === 'LOST' && c14.units_net === -1.0,
+      expected: 'result_status = LOST (empate 1-1 no cubre victoria local), units_net = -1.0u',
+      actual: `result_status = ${c14.result_status}, units_net = ${c14.units_net}u (${c14.settlement_reason})`
+    });
+
+    // CASO 15: Doble chance 1X "River Plate o Empate (1X)" con empate 1-1 -> WON.
+    const dcSignal: SignalEntity = { ...riverSignal, signal_id: 'SIG_TEST_RIVER_DC', market_type: 'DOUBLE_CHANCE', selection: 'River Plate o Empate (1X)' };
+    const c15 = SettlementEngine.settle(dcSignal, riverEvent);
+    results.push({
+      caseId: 'CASO_15',
+      title: 'Doble chance 1X con empate 1-1 debe liquidar WON (empate cubierto)',
+      passed: c15.result_status === 'WON' && c15.units_net > 0,
+      expected: 'result_status = WON (1X cubre empate), units_net > 0',
+      actual: `result_status = ${c15.result_status}, units_net = ${c15.units_net}u (${c15.settlement_reason})`
+    });
+
+    // CASO 16: Partido NO FINISHED (SCHEDULED) -> UNRESOLVED, NUNCA LOST forzado.
+    const schEvent: SportEvent = { ...riverEvent, status: 'SCHEDULED', home_score: null, away_score: null };
+    const c16 = SettlementEngine.settle(riverSignal, schEvent);
+    const c16Valid = c16.result_status === 'UNRESOLVED' && c16.units_net === 0;
+    results.push({
+      caseId: 'CASO_16',
+      title: 'Partido no FINISHED debe quedar UNRESOLVED (PENDING), nunca LOST forzado',
+      passed: c16Valid,
+      expected: 'result_status = UNRESOLVED, units_net = 0 (no liquidar sin marcador final)',
+      actual: `result_status = ${c16.result_status}, units_net = ${c16.units_net}u`
+    });
+
+    // CASO 17: FINISHED pero sin marcador oficial -> UNRESOLVED.
+    const noScoreEvent: SportEvent = { ...riverEvent, home_score: null, away_score: null };
+    const c17 = SettlementEngine.settle(riverSignal, noScoreEvent);
+    const c17Valid = c17.result_status === 'UNRESOLVED' && c17.units_net === 0;
+    results.push({
+      caseId: 'CASO_17',
+      title: 'FINISHED sin marcador oficial debe quedar UNRESOLVED, nunca LOST forzado',
+      passed: c17Valid,
+      expected: 'result_status = UNRESOLVED, units_net = 0 (marcador oficial ausente)',
+      actual: `result_status = ${c17.result_status}, units_net = ${c17.units_net}u`
+    });
+
+    // CASO 18: settlement_attempts / last_settlement_error persisten y round-trip via saveSignal/getSignal.
+    const retrySignal: SignalEntity = { ...riverSignal, signal_id: 'SIG_TEST_RETRY', settlement_attempts: 2, last_settlement_error: 'EVENT_NOT_FOUND', last_settlement_attempt: TimeService.nowUtc() };
+    db.saveSignal(retrySignal);
+    const recoveredRetry = db.getSignal('SIG_TEST_RETRY');
+    const c18Valid = recoveredRetry !== undefined && recoveredRetry.settlement_attempts === 2 && recoveredRetry.last_settlement_error === 'EVENT_NOT_FOUND';
+    results.push({
+      caseId: 'CASO_18',
+      title: 'Metadatos de reintento (settlement_attempts) persisten y se recuperan',
+      passed: c18Valid,
+      expected: 'settlement_attempts = 2, last_settlement_error = EVENT_NOT_FOUND',
+      actual: recoveredRetry ? `settlement_attempts = ${recoveredRetry.settlement_attempts}, last_settlement_error = ${recoveredRetry.last_settlement_error}` : 'No recuperada'
+    });
+
+    // CASO 19: syncFromPostgres es resiliente cuando Postgres NO está conectado (no lanza).
+    let syncResilient = false;
+    let syncCountResult: number | null = null;
+    try {
+      syncCountResult = await db.syncFromPostgres('PRODUCTION');
+      syncResilient = typeof syncCountResult === 'number';
+    } catch {
+      syncResilient = false;
+    }
+    results.push({
+      caseId: 'CASO_19',
+      title: 'syncFromPostgres no lanza error ni rompe el tick cuando Postgres está desconectado',
+      passed: syncResilient,
+      expected: 'Devuelve un número (0+), no arroja excepción',
+      actual: `syncResult = ${syncCountResult}`
+    });
+
+    // CASO 20: Señal ya liquidada (WON) NO vuelve a getPendingSignals -> no re-liquida tras reinicio.
+    const settledSignal: SignalEntity = { ...riverSignal, signal_id: 'SIG_TEST_ALREADY_SETTLED', status: 'WON', result_status: 'WON' };
+    db.saveSignal(settledSignal);
+    const pendingIds = new Set(db.getPendingSignals('TEST').map(s => s.signal_id));
+    const c20Valid = !pendingIds.has('SIG_TEST_ALREADY_SETTLED');
+    results.push({
+      caseId: 'CASO_20',
+      title: 'Señal ya liquidada (WON) queda excluida de getPendingSignals (no se re-liquida)',
+      passed: c20Valid,
+      expected: 'SIG_TEST_ALREADY_SETTLED NO está en getPendingSignals',
+      actual: c20Valid ? 'Excluida correctamente de señales pendientes' : 'Aún presente en pendientes'
     });
 
     return results;

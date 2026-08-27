@@ -85,7 +85,7 @@ export class SignalDecisionEngine {
 
     const reasoningBulletPoints = [
       `Modelo de Poisson Dixon-Coles proyecta ${top.confidence}% de probabilidad para "${top.selection}".`,
-      `Cuota ofrecida en ${top.bookmaker} (@${top.odds}) supera la cuota justa calculada (@${top.fairOdds}), generando un Edge de +${top.edge_percentage}%.`,
+      `Cuota ofrecida en ${top.bookmaker} (@${top.odds}) supera la cuota justa calculada (@${top.fair_odds}), generando un Edge de +${top.edge_percentage}%.`,
       `Gestión de banca: Criterio de Kelly fraccional recomienda stake conservador de ${stakeUnits} unidades (S/ ${stakeSoles}).`
     ];
 
