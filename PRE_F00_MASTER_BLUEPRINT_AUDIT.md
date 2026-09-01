@@ -470,6 +470,7 @@ Fase PRE-F00 FINALIZADA. **No se inicia F00. No se implementa el nuevo core. No 
 ## 31. RE-AUDIT — CIERRE DEFINITIVO PRE-F00 (REMEDIACIÓN APLICADA)
 
 **Fecha re-audit:** 2026-09-01 · **Método:** remediación FAIL CLOSED en código + re-verificación (tsc/build/pytest + grep secreto).
+**Commit de remediación:** `d6dd7a5` (`fix(pre-f00): cierre definitivo remediacion — re-audit PRE_F00_GO`). Snapshot Legacy intacto en `legacy/pre-fijas-ia-2`.
 
 ### 31.1 Checklist de 12 criterios de salida (todos PASS)
 
