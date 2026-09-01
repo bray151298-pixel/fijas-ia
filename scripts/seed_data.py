@@ -1,5 +1,12 @@
 """Genera un dataset sintético realista de partidos para demo y backtesting offline.
 
+ETIQUETA DE USO: DATA_SOURCE = SYNTHETIC_ONLY=true
+  - Este dataset es UNICAMENTE para demos, dev fixtures y pruebas de integración.
+  - PROHIBIDO usarlo para métricas comerciales, reportes públicos de rendimiento,
+    backtests "certificados" o entrenamiento declarado como real. Toda ejecución
+    resultante debe ser etiquetada SYNTHETIC_ONLY_UNVERIFIED (el simulador lo hace
+    automáticamente al detectar la columna `synthetic_only`).
+
 Cómo logra realismo:
   - Cada equipo tiene una "fuerza" latente (mu_attack, mu_defense, home_advantage).
   - Goles por partido se sortean de Poisson(lambda) donde lambda depende de las fuerzas.
@@ -164,6 +171,8 @@ def generate_synthetic() -> pd.DataFrame:
                     "o_home": sim["o_home"], "o_draw": sim["o_draw"], "o_away": sim["o_away"],
                     "o_btts_yes": sim["o_btts_yes"], "o_btts_no": sim["o_btts_no"],
                     "o_over_25": sim["o_over_25"], "o_under_25": sim["o_under_25"],
+                    # SYNTHETIC_ONLY=true: marca obligatoria del origen sintético (FAIL CLOSED).
+                    "synthetic_only": True,
                 })
                 fixture_id += 1
         day += 1
@@ -198,10 +207,13 @@ def main():
     out = Path("data/synthetic_matches.csv")
     out.parent.mkdir(parents=True, exist_ok=True)
     df = generate_synthetic()
+    # Dato de origen: SYNTHETIC_ONLY=true (verificar que la columna exista siempre)
+    if "synthetic_only" not in df.columns:
+        df["synthetic_only"] = True
     df.to_csv(out, index=False)
-    logger.info(f"Generadas {len(df)} filas → {out}")
+    logger.info(f"SYNTHETIC_ONLY=true | Generadas {len(df)} filas → {out}")
     seed_database(df)
-    logger.info("Base de datos sembrada.")
+    logger.info("Base de datos sembrada (dataset sintético, NO verificado).")
 
 
 if __name__ == "__main__":

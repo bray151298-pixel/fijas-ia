@@ -96,8 +96,8 @@ export const MatchIntelligenceModal: React.FC<MatchIntelligenceModalProps> = ({
 
   if (!match) return null;
 
-  // H2H Chart Data
-  const h2hChartData = match.h2h.map((h, i) => ({
+  // H2H Chart Data (FAIL CLOSED: vacío si no hay enfrentamientos verificados)
+  const h2hChartData = (match.h2h || []).map((h, i) => ({
     name: `${h.homeTeam.substring(0, 4)} vs ${h.awayTeam.substring(0, 4)}`,
     date: h.date,
     score: h.score,
@@ -116,14 +116,14 @@ export const MatchIntelligenceModal: React.FC<MatchIntelligenceModalProps> = ({
     recommendedStake: match.evSignal.stake,
     verdict: match.evSignal.rationale
   } : {
-    market: '1X2 - Ganador',
-    selection: match.homeTeam,
-    marketOdds: match.odds?.home ?? 2.0,
-    fairOdds: Number((100 / (match.probabilities?.home ?? 50)).toFixed(2)),
-    edgePercent: Number((((match.odds?.home ?? 2.0 / (100 / (match.probabilities?.home ?? 50))) - 1) * 100).toFixed(1)),
-    modelProbability: match.probabilities?.home ?? 50,
-    recommendedStake: '+1.5u',
-    verdict: 'Discrepancia detectada en la probabilidad del modelo vs cuota de mercado.'
+    market: 'SIN PRONÓSTICO VERIFICADO',
+    selection: 'FAIL CLOSED: pendiente de datos cuantitativos (F00)',
+    marketOdds: 1,
+    fairOdds: 1,
+    edgePercent: 0,
+    modelProbability: 0,
+    recommendedStake: '+0.0u',
+    verdict: 'El pipeline cuantitativo PRE-F00 no emite pronósticos sin datos verificados (FAIL CLOSED).'
   });
 
   const isBestPickInParlay = isLegAddedToParlay(match.id, bestPick.selection);
@@ -401,7 +401,8 @@ export const MatchIntelligenceModal: React.FC<MatchIntelligenceModalProps> = ({
                   </div>
                 </div>
 
-                {/* Over / Under 2.5 Goals */}
+                {/* Over / Under 2.5 Goals — sólo si hay datos verificados (F00) */}
+                {match.probabilities && match.odds && (
                 <div className="space-y-1.5 pt-1">
                   <div className="flex justify-between text-xs font-semibold text-slate-300">
                     <span>Línea Over / Under 2.5 Goles</span>
@@ -414,8 +415,10 @@ export const MatchIntelligenceModal: React.FC<MatchIntelligenceModalProps> = ({
                     <div className="bg-slate-700 h-full" style={{ width: `${match.probabilities.under25}%` }} />
                   </div>
                 </div>
+                )}
 
                 {/* Both Teams To Score (BTTS) */}
+                {match.probabilities && match.odds && (
                 <div className="space-y-1.5 pt-1">
                   <div className="flex justify-between text-xs font-semibold text-slate-300">
                     <span>Ambos Equipos Anotan (BTTS)</span>
@@ -428,8 +431,10 @@ export const MatchIntelligenceModal: React.FC<MatchIntelligenceModalProps> = ({
                     <div className="bg-slate-700 h-full" style={{ width: `${match.probabilities.bttsNo}%` }} />
                   </div>
                 </div>
+                )}
 
-                {/* Key stats: Clean Sheet & xG */}
+                {/* Key stats: Clean Sheet & xG — sólo si hay estadísticas verificadas (F00) */}
+                {match.statsComparison && (
                 <div className="grid grid-cols-2 gap-2 pt-2 text-xs">
                   <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/80">
                     <span className="text-[10px] text-slate-400 uppercase font-bold block">xG Proyectado</span>
@@ -444,6 +449,7 @@ export const MatchIntelligenceModal: React.FC<MatchIntelligenceModalProps> = ({
                     </div>
                   </div>
                 </div>
+                )}
               </div>
             </div>
 
@@ -461,9 +467,9 @@ export const MatchIntelligenceModal: React.FC<MatchIntelligenceModalProps> = ({
                 </span>
               </div>
 
-              {/* H2H Match List */}
+              {/* H2H Match List (FAIL CLOSED: vacío si no hay enfrentamientos verificados) */}
               <div className="space-y-2">
-                {match.h2h.map((h, idx) => (
+                {(match.h2h || []).map((h, idx) => (
                   <div 
                     key={idx}
                     className="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800/80 flex items-center justify-between text-xs"
@@ -482,14 +488,20 @@ export const MatchIntelligenceModal: React.FC<MatchIntelligenceModalProps> = ({
                     </div>
                   </div>
                 ))}
+                {(!match.h2h || match.h2h.length === 0) && (
+                  <div className="text-xs text-slate-500 p-2">
+                    Sin enfrentamientos verificados disponibles (FAIL CLOSED PRE-F00).
+                  </div>
+                )}
               </div>
 
-              {/* Form Streaks */}
+              {/* Form Streaks (FAIL CLOSED: vacío si no hay formato verificado) */}
+              {match.form && (
               <div className="pt-1 flex items-center justify-between text-xs border-t border-slate-800/80">
                 <div className="flex items-center gap-1.5">
                   <span className="text-slate-400 font-medium">Racha {match.homeTeam}:</span>
                   <div className="flex gap-1">
-                    {match.form.home.map((f, i) => (
+                    {(match.form.home || []).map((f, i) => (
                       <span 
                         key={i} 
                         className={`w-4 h-4 rounded text-[9px] font-black flex items-center justify-center ${
@@ -505,7 +517,7 @@ export const MatchIntelligenceModal: React.FC<MatchIntelligenceModalProps> = ({
                 <div className="flex items-center gap-1.5">
                   <span className="text-slate-400 font-medium">Racha {match.awayTeam}:</span>
                   <div className="flex gap-1">
-                    {match.form.away.map((f, i) => (
+                    {(match.form.away || []).map((f, i) => (
                       <span 
                         key={i} 
                         className={`w-4 h-4 rounded text-[9px] font-black flex items-center justify-center ${
@@ -518,6 +530,7 @@ export const MatchIntelligenceModal: React.FC<MatchIntelligenceModalProps> = ({
                   </div>
                 </div>
               </div>
+              )}
             </div>
           </div>
 

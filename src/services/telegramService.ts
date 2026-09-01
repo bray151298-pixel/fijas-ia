@@ -29,7 +29,7 @@ export const TELEGRAM_CONFIG = {
   // Canal Público y VIP
   publicChannel: '@FijasIAOficial',
   vipChannel: '-1004358917232',
-  vipChannelInviteLink: 'https://t.me/+jMKV8QQI2VhiZTVh',
+  vipChannelInviteLink: '', // FAIL CLOSED: enlace generado dinámicamente o vacío
   vipChannelName: 'Fijas IA — VIP Cuantitativo',
   defaultChatId: '@FijasIAOficial',
   // Backward compatibility

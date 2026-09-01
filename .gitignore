@@ -19,3 +19,14 @@ __pycache__/
 *.pyc
 node_modules/
 app_web/node_modules/
+
+# Artefactos sensibles/locales que no deben trackearse
+*.zip
+*.db
+temp_new_zip/
+data/backups/
+app_web/data/backups/
+data/fijas_database.json.backup*
+app_web/data/fijas_database.json.backup*
+data/locks/
+app_web/data/locks/

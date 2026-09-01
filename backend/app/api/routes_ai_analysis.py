@@ -1,16 +1,20 @@
-"""Análisis IA inteligente — usa Claude (Anthropic) con búsqueda web.
+"""Análisis IA inteligente — usa Claude (Anthropic), Gemini u OmniRoute con búsqueda web.
 
 A diferencia del análisis manual (donde tú pegas cuotas), este endpoint hace
-TODO el trabajo de investigación por ti:
+TODO el trabajo de investigación contextual por ti:
 
   1. Tú escribes solo el partido: "Real Madrid vs Barcelona"
-  2. Claude busca en la web: form reciente, h2h, lesiones, alineaciones, contexto
+  2. Claude/Gemini/OmniRoute busca en la web: form reciente, h2h, lesiones,
+     alineaciones, contexto
   3. Razona cualitativamente sobre el partido
-  4. Devuelve probabilidades para todos los mercados (1X2, BTTS, O/U, doble oport.)
-  5. Si el usuario pegó cuotas, también calcula EV y picks recomendados
+  4. Devuelve SOLO contexto (probabilities={} vacías, sin EV/stake/picks)
+
+LÍMITE CUANTITATIVO (FAIL CLOSED, PRE-F00): el LLM NUNCA emite probabilidades,
+EV, edge ni stakes. Las métricas cuantitativas son competencia exclusiva del Motor
+Cuantitativo certificado (F00). Ante cualquier fallo del LLM → AI_CONTEXT_UNAVAILABLE.
 
 Costo: ~$0.05-0.10 por análisis con Claude Sonnet.
-Requiere: `ANTHROPIC_API_KEY` en .env.
+Requiere: `ANTHROPIC_API_KEY` / `GOOGLE_API_KEY` / `OMNIROUTE_API_KEY` en .env.
 """
 from __future__ import annotations
 
@@ -22,9 +26,13 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from backend.app.core.logging import logger
-from backend.app.ml.kelly import stake_amount
 
 router = APIRouter(prefix="/api/ai", tags=["ai"])
+
+# FAIL CLOSED (PRE-F00): el LLM aporta SOLO contexto. Las probabilidades/EV/stake
+# son competencia exclusiva del Motor Cuantitativo certificado (F00). Pre-F00 ese
+# motor no existe, así que estos campos se emiten siempre vacíos o descartados.
+AI_CONTEXT_UNAVAILABLE = "AI_CONTEXT_UNAVAILABLE"
 
 
 # ---------- Schemas ----------
@@ -69,7 +77,9 @@ class AIAnalysisResponse(BaseModel):
     key_factors: list[str]
     probabilities: dict[str, float]
     ai_recommendation: str
-    confidence_level: str  # LOW / MEDIUM / HIGH
+    confidence_level: str  # LOW / MEDIUM / HIGH (confianza de CONTEXTO, no probabilidad)
+    # FAIL CLOSED: AI_CONTEXT_UNAVAILABLE | AI_CONTEXT_ONLY — el LLM nunca emite métricas cuantitativas.
+    quant_status: str = "AI_CONTEXT_UNAVAILABLE"
     rationale: str
     picks: list[AIPick]
     cost_estimate_usd: float
@@ -77,16 +87,21 @@ class AIAnalysisResponse(BaseModel):
 
 
 # ---------- Sistema prompt ----------
-SYSTEM_PROMPT = """Eres un analista experto de apuestas deportivas con 15 años de experiencia,
-especialista en value betting y análisis cuantitativo de fútbol. Tu trabajo es analizar un
-partido específico y devolver probabilidades calibradas para los principales mercados.
+SYSTEM_PROMPT = """Eres un analista experto de apuestas deportivas con 15 años de experiencia.
+Tu trabajo es aportar CONTEXTO CUALITATIVO verificable de un partido futuro.
+
+LÍMITE CUANTITATIVO (FAIL CLOSED — obligatorio):
+- NUNCA calcules probabilidades, cuotas justas, EV, edge ni stakes. Esas magnitudes
+  sólo puede emitirlas el Motor Cuantitativo certificado (F00) con datos reales verificados.
+- NO inventes números. Si un dato no se puede verificar, escribe "no disponible".
+- Si el sistema no logra verificar datos contextuales, responde con
+  cantidad_cualitativa = "AI_CONTEXT_UNAVAILABLE".
 
 REGLAS CRÍTICAS:
 0. **OBLIGATORIO: el partido a analizar tiene que ser de HOY (mismo día) o FUTURO**
    (kickoff posterior o igual a la fecha actual que te indiquen).
    - Si encuentras un partido programado para HOY: SÍRVELO (incluso si ya empezó, marca
-     status="EN VIVO" en context_summary y reduce confidence_level a "LOW" porque las
-     cuotas pre-match ya no son válidas en live).
+     status="EN VIVO" en context_summary).
    - Si solo encuentras partidos ya terminados: busca el SIGUIENTE programado entre esos
      dos equipos en los próximos 14 días.
    - Si el usuario pasa solo el nombre de un equipo: busca su PRÓXIMO partido (hoy o en
@@ -96,12 +111,11 @@ REGLAS CRÍTICAS:
    h2h, lesiones confirmadas, alineaciones probables, contexto del partido).
 2. Para Liga 1 Perú, La Liga, Premier, Champions, etc. — investiga las fuentes oficiales
    (Sofascore, FBref, ESPN, Marca, AS, Depor.com para Perú).
-3. NO inventes números. Si no encuentras h2h, di "no disponible" en lugar de inventar.
-4. Las probabilidades deben sumar correctamente: P(home)+P(draw)+P(away)=1.0,
-   P(btts_yes)+P(btts_no)=1.0, P(over_25)+P(under_25)=1.0.
-5. Sé honesto sobre incertidumbre — un confidence "LOW" es mejor que un dato inventado.
-6. Las probabilidades calibradas suelen estar entre 0.20 y 0.65 para 1X2; nunca 95%+.
-7. Considera factores cualitativos: motivación (descenso, copa, derbi), clima, viaje, árbitro.
+3. El JSON debe traer `probabilities: {}` VACÍO. No se devuelven probabilidades.
+4. Sé honesto sobre incertidumbre: si no hay contexto verificado, usa "no disponible".
+5. `confidence_level` refleja la CONFIANZA DE CONTEXTO (LOW/MEDIUM/HIGH), NO una probabilidad.
+6. Considera factores cualitativos: motivación (descenso, copa, derbi), clima, viaje, árbitro,
+   lesiones y alineaciones — todos citados con fuente.
 
 DEVUELVE EXCLUSIVAMENTE un JSON válido con esta estructura — sin texto antes ni después:
 
@@ -109,7 +123,7 @@ DEVUELVE EXCLUSIVAMENTE un JSON válido con esta estructura — sin texto antes 
   "matched_event": "Liverpool vs Arsenal",
   "league": "Premier League 2025-26",
   "kickoff": "2026-04-30T16:00:00",
-  "context_summary": "Resumen 2-3 frases del estado de los dos equipos",
+  "context_summary": "Resumen 2-3 frases del estado de los dos equipos (con fuente)",
   "home_form": "WWLDW (3W-1D-1L últimos 5)",
   "away_form": "DWWLW",
   "h2h_summary": "Últimos 5 enfrentamientos: 2 ganados Liverpool, 2 ganados Arsenal, 1 empate",
@@ -119,21 +133,10 @@ DEVUELVE EXCLUSIVAMENTE un JSON válido con esta estructura — sin texto antes 
     "Arsenal viene de eliminación europea, posible bajón motivacional",
     "Histórico: BTTS sí en 4 de últimos 5 enfrentamientos"
   ],
-  "probabilities": {
-    "home_win": 0.48,
-    "draw": 0.27,
-    "away_win": 0.25,
-    "btts_yes": 0.62,
-    "btts_no": 0.38,
-    "over_25": 0.58,
-    "under_25": 0.42,
-    "double_chance_1x": 0.75,
-    "double_chance_x2": 0.52,
-    "double_chance_12": 0.73
-  },
-  "ai_recommendation": "BTTS Sí parece la mejor opción dado el histórico y las bajas defensivas",
+  "probabilities": {},
+  "ai_recommendation": "",
   "confidence_level": "MEDIUM",
-  "rationale": "Análisis textual de 4-6 frases explicando por qué llegaste a estas probabilidades",
+  "rationale": "Análisis contextual de 4-6 frases — sin probabilidades ni EV",
   "sources": ["sofascore.com/...", "espn.com/...", "marca.com/..."]
 }
 """
@@ -167,76 +170,13 @@ def _extract_json(text: str) -> dict:
         "league": "Liga Oficial",
         "kickoff": "2026-08-23T20:00:00",
         "context_summary": text[:300] if text else "Análisis completado.",
-        "probabilities": {
-            "home_win": 0.45, "draw": 0.28, "away_win": 0.27,
-            "btts_yes": 0.52, "btts_no": 0.48,
-            "over_25": 0.50, "under_25": 0.50,
-            "double_chance_1x": 0.73, "double_chance_x2": 0.55, "double_chance_12": 0.72
-        },
-        "ai_recommendation": "Revisar cuotas y mercado con las probabilidades estimadas.",
-        "confidence_level": "MEDIUM",
-        "rationale": text[:400] if text else "Análisis cuantitativo de probabilidades.",
+        # FAIL CLOSED: sin JSON válido no se genera ninguna probabilidad/EV/stake.
+        "probabilities": {},
+        "ai_recommendation": "AI_CONTEXT_UNAVAILABLE",
+        "confidence_level": "LOW",
+        "rationale": text[:400] if text else "Análisis contextual sin verificación cuantitativa.",
         "sources": []
     }
-
-
-def _devig_1x2(o_h: float, o_d: float, o_a: float):
-    inv = [1.0 / o_h, 1.0 / o_d, 1.0 / o_a]
-    s = sum(inv)
-    return inv[0] / s, inv[1] / s, inv[2] / s
-
-
-def _devig_binary(o_yes: float, o_no: float):
-    inv_y, inv_n = 1.0 / o_yes, 1.0 / o_no
-    s = inv_y + inv_n
-    return inv_y / s, inv_n / s
-
-
-def _build_picks_from_odds(probs: dict, odds: AISearchOdds, bankroll: float) -> list[AIPick]:
-    """Si el usuario pegó cuotas, calculamos EV vs predicciones IA."""
-    from backend.app.config import settings
-    picks: list[AIPick] = []
-
-    def consider(market, sel, p_m, odd, p_f):
-        ev = p_m * (odd - 1) - (1 - p_m)
-        edge = p_m - p_f
-        is_value = (
-            ev >= settings.min_expected_value
-            and p_m >= settings.min_probability
-            and edge > 0
-            and 1.40 <= odd <= 8.0
-        )
-        stake = stake_amount(p_m, odd, bankroll) if is_value else 0.0
-        reason = (
-            f"✅ EV +{ev*100:.1f}%, edge +{edge*100:.1f}% — apostar"
-            if is_value
-            else f"❌ EV {ev*100:+.1f}%, edge {edge*100:+.1f}% — descartar"
-        )
-        picks.append(AIPick(
-            market=market, selection=sel, p_model=round(p_m, 4),
-            odd=odd, p_fair=round(p_f, 4),
-            expected_value=round(ev, 4),
-            suggested_stake=round(stake, 2),
-            reason=reason,
-        ))
-
-    if odds.home and odds.draw and odds.away:
-        p_fh, p_fd, p_fa = _devig_1x2(odds.home, odds.draw, odds.away)
-        consider("1X2", "HOME", probs.get("home_win", 0), odds.home, p_fh)
-        consider("1X2", "DRAW", probs.get("draw", 0), odds.draw, p_fd)
-        consider("1X2", "AWAY", probs.get("away_win", 0), odds.away, p_fa)
-
-    if odds.btts_yes and odds.btts_no:
-        p_fy, p_fn = _devig_binary(odds.btts_yes, odds.btts_no)
-        consider("BTTS", "YES", probs.get("btts_yes", 0), odds.btts_yes, p_fy)
-        consider("BTTS", "NO", probs.get("btts_no", 0), odds.btts_no, p_fn)
-
-    if odds.over_25 and odds.under_25:
-        p_fy, p_fn = _devig_binary(odds.over_25, odds.under_25)
-        consider("OU25", "OVER", probs.get("over_25", 0), odds.over_25, p_fy)
-        consider("OU25", "UNDER", probs.get("under_25", 0), odds.under_25, p_fn)
-
-    return picks
 
 
 # ---------- Backends LLM ----------
@@ -292,8 +232,10 @@ def _call_omniroute(query: str) -> tuple[dict, float]:
         f"Devuelve EXCLUSIVAMENTE el JSON estructurado según el system prompt. NO devuelvas partidos ya finalizados."
     )
     url = f"{settings.omniroute_base_url.rstrip('/')}/chat/completions"
+    if not settings.omniroute_api_key:
+        raise RuntimeError("OMNIROUTE_API_KEY no configurada. FAIL CLOSED.")
     headers = {
-        "Authorization": f"Bearer {settings.omniroute_api_key or 'sk-omniroute'}",
+        "Authorization": f"Bearer {settings.omniroute_api_key}",
         "Content-Type": "application/json",
     }
     payload = {
@@ -414,7 +356,8 @@ def _call_gemini(query: str) -> tuple[dict, float]:
         f"INSTRUCCIONES:\n"
         f"Analiza el partido o equipo: **{query}** usando estrictamente los datos de arriba.\n"
         f"REGLA OBLIGATORIA: Si arriba aparece un 'CALENDARIO OFICIAL EN VIVO (ESPN)', utiliza OBLIGATORIAMENTE ese partido real como matched_event, su liga y su kickoff oficial exacto.\n"
-        f"Incluye: alineación probable, lesiones clave, forma reciente (últimos 5), head-to-head, contexto y probabilidades calibradas.\n"
+        f"Incluye: alineación probable, lesiones clave, forma reciente (últimos 5), head-to-head y contexto.\n"
+        f"NO calcules probabilidades ni EV: `probabilities` debe venir vacía (no emits métricas cuantitativas).\n"
         f"Devuelve EXCLUSIVAMENTE un JSON válido con la estructura del system prompt — sin markdown, sin texto antes ni después.\n"
         f"NO devuelvas partidos ya finalizados."
     )
@@ -489,13 +432,15 @@ def ai_analyze(req: AIAnalysisRequest):
         raise HTTPException(502, f"Error llamando al LLM ({prov}): {e}")
 
     logger.info(f"Análisis IA con {prov} → costo ${cost:.4f}")
-    probs = data.get("probabilities", {})
-
-    # Si trae cuotas, calculamos picks
-    bankroll = req.bankroll or settings.initial_bankroll
+    # FAIL CLOSED (PRE-F00): la IA produce SOLO contexto. Probabilidades/EV/stake
+    # no se emiten nunca desde el LLM: el Motor Cuantitativo certificado (F00) es
+    # el único autorizado, y aún no existe.
+    probs: dict[str, float] = {}
     picks: list[AIPick] = []
-    if req.odds:
-        picks = _build_picks_from_odds(probs, req.odds, bankroll)
+    quant_status = AI_CONTEXT_UNAVAILABLE
+    ai_rec = data.get("ai_recommendation")
+    if req.odds or probs or ai_rec:
+        quant_status = "AI_CONTEXT_ONLY"
 
     return AIAnalysisResponse(
         query=req.query,
@@ -509,12 +454,13 @@ def ai_analyze(req: AIAnalysisRequest):
         injuries=data.get("injuries", "no disponible"),
         key_factors=data.get("key_factors", []),
         probabilities=probs,
-        ai_recommendation=data.get("ai_recommendation", ""),
-        confidence_level=data.get("confidence_level", "MEDIUM"),
+        ai_recommendation=data.get("ai_recommendation") or AI_CONTEXT_UNAVAILABLE,
+        confidence_level=data.get("confidence_level", "LOW"),
         rationale=data.get("rationale", ""),
         picks=picks,
         cost_estimate_usd=round(cost, 4),
         sources=data.get("sources", []),
+        quant_status=quant_status,
     )
 
 

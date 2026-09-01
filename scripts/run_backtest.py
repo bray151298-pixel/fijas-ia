@@ -18,6 +18,11 @@ from backend.app.ml.predict import Predictor
 def main():
     csv_path = Path("data/synthetic_matches.csv")
     df = pd.read_csv(csv_path, parse_dates=["kickoff"])
+    # FAIL CLOSED: el score sólo es válido sobre datos marcados SYNTHETIC_ONLY=true (dev/demo).
+    synthetic = bool(df.get("synthetic_only", pd.Series(dtype=bool)).eq(True).any()) if "synthetic_only" in df.columns else False
+    if not synthetic:
+        print("FATAL: dataset sin marca SYNTHETIC_ONLY=true. No se emiten métricas. (FAIL CLOSED)")
+        raise SystemExit(2)
     df = df[df["status"] == "FINISHED"].copy()
 
     # Backtest sobre el ÚLTIMO 25% de la historia (out-of-sample del entrenamiento)
@@ -32,6 +37,7 @@ def main():
     res = run_backtest(df, predictor, start, end, initial_bankroll=settings.initial_bankroll)
 
     print("\n=== Resultados Backtest ===")
+    print(f" VERIFICACIÓN     : {res.verification}  (métricas NO certificadas)")
     print(f" Banca inicial   : {res.initial:,.2f}")
     print(f" Banca final     : {res.final:,.2f}")
     print(f" PnL             : {res.pnl:+,.2f}")

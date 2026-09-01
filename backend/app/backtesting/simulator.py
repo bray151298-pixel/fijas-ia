@@ -8,9 +8,19 @@ Simula el comportamiento del Tipster sobre un periodo histórico, replicando exa
   - liquidación al resultado real
 
 Salida: histórico de banca, ROI, winrate, max drawdown, Sharpe.
+
+FAIL CLOSED (PRE-F00):
+  - Los resultados de este backtest NO son métricas certificadas. La verificación
+  (verification == "VERIFIED") sólo puede emitirse cuando la fuente de datos es real
+  (proveedor verificado) y el Motor Cuantitativo F00 finalice la técnica out-of-sample.
+  - Backtests sobre datos con marcador synthetic_only (SYNTHETIC_ONLY=true) o sin
+  señal de verificación quedan taggeados "SYNTHETIC_ONLY_UNVERIFIED".
+  - El ROI usa el STAKE REAL apostado (registrado en el loop) como denominador, nunca
+  la volatilidad de la curva (~línea 153 histórica era incorrecta y la hemos corregido).
 """
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from typing import Iterator
@@ -44,6 +54,7 @@ class BacktestResult:
     max_drawdown: float
     peak: float
     sharpe: float
+    verification: str = "UNVERIFIED"
     bankroll_curve: list[tuple[datetime, float]] = field(default_factory=list)
 
 
@@ -85,12 +96,20 @@ def run_backtest(matches_df: pd.DataFrame, predictor: Predictor,
                  start: datetime, end: datetime,
                  initial_bankroll: float | None = None) -> BacktestResult:
     """Corre un backtest entre `start` y `end` usando los modelos cargados en `predictor`."""
+    # FAIL CLOSED: si el dataset declara origen sintético, el resultado queda no-verificado.
+    synthetic_tag = "SYNTHETIC_ONLY"
+    is_synthetic = bool(matches_df.get("synthetic_only", pd.Series(dtype=bool)).eq(True).any()) \
+        if "synthetic_only" in matches_df.columns else False
+    if not is_synthetic and os.getenv("SYNTHETIC_SOURCE_INDICATOR", "") == "true":
+        is_synthetic = "synthetic_only" not in matches_df.columns
+
     initial = initial_bankroll or settings.initial_bankroll
     bankroll = float(initial)
     peak = bankroll
     daily_pnl: dict[date, float] = {}
     bets, won, lost = 0, 0, 0
     pnl_total = 0.0
+    stakes_total = 0.0
     curve: list[tuple[datetime, float]] = [(start, bankroll)]
     daily_returns: list[float] = []
 
@@ -132,6 +151,7 @@ def run_backtest(matches_df: pd.DataFrame, predictor: Predictor,
             if stake < 1.0:
                 continue
 
+            stakes_total += stake
             won_bet = _resolve(market, selection, int(row["home_goals"]), int(row["away_goals"]))
             pnl = stake * (odd - 1) if won_bet else -stake
             bankroll += pnl
@@ -150,7 +170,9 @@ def run_backtest(matches_df: pd.DataFrame, predictor: Predictor,
             break
 
     drawdown = max(0.0, (peak - bankroll) / peak) if peak > 0 else 0.0
-    roi = pnl_total / (sum(abs(p[1] - p2[1]) for p, p2 in zip(curve, curve[1:])) or 1.0)
+    # ROI = PnL / STAKE real total apostado (denominador corregido; antes usaba
+    # la volatilidad de la curva, que incluía la ganancia en apostadas ganadoras).
+    roi = pnl_total / stakes_total if stakes_total > 0 else 0.0
     # Sharpe simple: media/stdev de daily returns (anualizado)
     if daily_returns:
         mu = float(np.mean(daily_returns))
@@ -159,9 +181,11 @@ def run_backtest(matches_df: pd.DataFrame, predictor: Predictor,
     else:
         sharpe = 0.0
     winrate = (won / bets) if bets else 0.0
+    verification = f"{synthetic_tag}_UNVERIFIED" if is_synthetic else "UNVERIFIED"
     return BacktestResult(
         initial=initial, final=round(bankroll, 2), bets=bets, won=won, lost=lost,
         pnl=round(pnl_total, 2), roi=round(roi, 4), winrate=round(winrate, 4),
         max_drawdown=round(drawdown, 4), peak=round(peak, 2), sharpe=round(sharpe, 2),
+        verification=verification,
         bankroll_curve=curve,
     )

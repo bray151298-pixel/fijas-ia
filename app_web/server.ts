@@ -104,15 +104,21 @@ app.get("/health", async (req, res) => {
 // ==========================================
 // SECURE SERVER-SIDE ADMIN AUTHENTICATION
 // ==========================================
+// Credenciales SOLO desde env vars. Sin fallbacks literales (FAIL CLOSED).
 const activeAdminSessions = new Set<string>();
 
 app.post("/api/admin/login", (req, res) => {
   const { username, password } = req.body;
   const expectedUsername = process.env.ADMIN_USERNAME || "admin";
-  const expectedPassword = process.env.ADMIN_PASSWORD || process.env.MASTER_PASSWORD || "FijasIA2026*";
+  const expectedPassword = process.env.ADMIN_PASSWORD || process.env.MASTER_PASSWORD;
+  if (!expectedPassword) {
+    return res.status(500).json({ success: false, message: "ADMIN_PASSWORD no configurada. FAIL CLOSED." });
+  }
 
   if (username && username.trim() === expectedUsername && password && password === expectedPassword) {
-    const sessionToken = "fijas_sec_" + Buffer.from(Date.now() + "_" + Math.random().toString(36).substring(2)).toString("base64");
+    const rand = new Uint8Array(32);
+    (globalThis.crypto || require("crypto")).getRandomValues(rand);
+    const sessionToken = "fijas_sec_" + Buffer.from(rand).toString("base64url") + "_" + Date.now();
     activeAdminSessions.add(sessionToken);
     return res.json({ success: true, token: sessionToken, message: "Acceso de administrador verificado y concedido." });
   }
@@ -121,7 +127,8 @@ app.post("/api/admin/login", (req, res) => {
 
 app.post("/api/admin/verify-session", (req, res) => {
   const { token } = req.body;
-  if (token && (activeAdminSessions.has(token) || token.startsWith("authenticated_") || token.startsWith("fijas_sec_"))) {
+  // SOLO se aceptan tokens emitidos por este proceso y presentes en el set.
+  if (token && typeof token === "string" && activeAdminSessions.has(token)) {
     return res.json({ valid: true });
   }
   return res.status(401).json({ valid: false });
@@ -129,20 +136,31 @@ app.post("/api/admin/verify-session", (req, res) => {
 
 app.post("/api/admin/change-password", (req, res) => {
   const { currentPassword, newPassword } = req.body;
-  const expectedPassword = process.env.ADMIN_PASSWORD || process.env.MASTER_PASSWORD || "FijasIA2026*";
-  if (currentPassword === expectedPassword) {
-    process.env.ADMIN_PASSWORD = newPassword;
-    return res.json({ success: true, message: "Contraseña de administrador actualizada con éxito." });
+  const expectedPassword = process.env.ADMIN_PASSWORD || process.env.MASTER_PASSWORD;
+  if (!expectedPassword) {
+    return res.status(500).json({ success: false, message: "ADMIN_PASSWORD no configurada. FAIL CLOSED." });
   }
-  return res.status(400).json({ success: false, message: "La contraseña actual no coincide." });
+  if (currentPassword === expectedPassword && newPassword && newPassword.length >= 8) {
+    // NOTA: en un despliegue real la nueva contraseña debe persistirse en un secret store,
+    // no mutarse solo en memoria. Aquí se documenta el cambio para el operador.
+    console.error("[SECURITY] ADMIN_PASSWORD change requires external secret-store update.");
+    return res.status(501).json({ success: false, message: "El cambio de contraseña requiere actualización manual del secret store." });
+  }
+  return res.status(400).json({ success: false, message: "La contraseña actual no coincide o la nueva es inválida." });
 });
 
 app.post("/api/admin/verify-recovery-otp", (req, res) => {
   const { rootKey, otpCode, newPassword } = req.body;
-  const expectedRootKey = process.env.ADMIN_RECOVERY_KEY || "FIJAS-ADMIN-ROOT-2026";
+  const expectedRootKey = process.env.ADMIN_RECOVERY_KEY;
+  if (!expectedRootKey) {
+    return res.status(500).json({ success: false, message: "ADMIN_RECOVERY_KEY no configurada. FAIL CLOSED." });
+  }
   if (rootKey && rootKey.trim() === expectedRootKey) {
-    if (newPassword) process.env.ADMIN_PASSWORD = newPassword;
-    return res.json({ success: true, message: "Clave root validada. Contraseña actualizada correctamente." });
+    if (newPassword) {
+      console.error("[SECURITY] Recovery password change requires external secret-store update.");
+      return res.status(501).json({ success: false, message: "Requiere actualización manual del secret store." });
+    }
+    return res.json({ success: true, message: "Clave root validada." });
   }
   return res.status(400).json({ success: false, message: "Clave de recuperación de emergencia inválida." });
 });
@@ -574,9 +592,9 @@ Devuelve un JSON estrictamente estructurado con las siguientes claves:
 // ==========================================
 
 let SIGNALS_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || process.env.SIGNALS_BOT_TOKEN || "";
-let SIGNALS_BOT_USERNAME = "@FijasIAOficial_bot";
+let SIGNALS_BOT_USERNAME = "";
 
-let SUPPORT_BOT_TOKEN = process.env.SUPPORT_BOT_TOKEN || "";
+let SUPPORT_BOT_TOKEN = process.env.SUPPORT_BOT_TOKEN || process.env.TELEGRAM_SUPPORT_BOT_TOKEN || "";
 let SUPPORT_BOT_USERNAME = "@SoporteFijasIA_bot";
 
 
@@ -584,7 +602,47 @@ const ADMIN_TELEGRAM_ID = process.env.ADMIN_TELEGRAM_ID || "";
 
 const PUBLIC_CHANNEL = process.env.TELEGRAM_PUBLIC_CHANNEL || "@FijasIAOficial";
 const VIP_CHANNEL_ID = process.env.TELEGRAM_VIP_CHANNEL_ID || "-1004358917232";
-const VIP_CHANNEL_INVITE_LINK = "https://t.me/+jMKV8QQI2VhiZTVh";
+// FAIL CLOSED: no se permite link estático. Solo se acepta desde env o se genera via createChatInviteLink.
+const VIP_CHANNEL_INVITE_LINK = process.env.VIP_CHANNEL_INVITE_LINK || "";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TELEGRAM SAFETY (PRE-F00): single-instance polling + estado de compromiso
+// ─────────────────────────────────────────────────────────────────────────────
+const TELEGRAM_LOCK_DIR = process.env.TELEGRAM_LOCK_DIR || path.join(__dirname, "data", "locks");
+const TELEGRAM_COMPROMISE_STATUS = (process.env.TELEGRAM_COMPROMISE_STATUS || "OK").trim().toUpperCase();
+const TELEGRAM_SAFE_STATUSES = new Set(["", "OK", "NONE", "FALSE", "0", "GOOD", "HEALTHY"]);
+const TELEGRAM_COMPROMISED = !TELEGRAM_SAFE_STATUSES.has(TELEGRAM_COMPROMISE_STATUS);
+
+function acquireTelegramPollLock(name: "signals" | "support"): boolean {
+  if (TELEGRAM_COMPROMISED) return false;
+  const file = path.join(TELEGRAM_LOCK_DIR, `.telegram_${name}.lock`);
+  const payload = JSON.stringify({ pid: process.pid, ts: Date.now() });
+  try {
+    fs.mkdirSync(TELEGRAM_LOCK_DIR, { recursive: true });
+    fs.writeFileSync(file, payload, { flag: "wx" });
+    return true;
+  } catch {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(file, "utf8")) as { pid: number; ts: number };
+      let pidAlive = true;
+      try { process.kill(parsed.pid, 0); } catch { pidAlive = false; }
+      const stale = Date.now() - parsed.ts > 10 * 60 * 1000;
+      if (!pidAlive || stale) {
+        fs.writeFileSync(file, payload, { flag: "w" });
+        console.log(`[TelegramSafety] lock '${name}' robado (pid ${parsed.pid} muerto o stale) → adquirido`);
+        return true;
+      }
+      console.log(`[TelegramSafety] polling '${name}' ya lo tiene otro proceso (pid ${parsed.pid}) → SKIP single-instance`);
+    } catch {
+      // Lock ilegible/corrupto → no adquirir (FAIL CLOSED)
+    }
+    return false;
+  }
+}
+
+function releaseTelegramPollLock(name: "signals" | "support") {
+  try { fs.unlinkSync(path.join(TELEGRAM_LOCK_DIR, `.telegram_${name}.lock`)); } catch {}
+}
 
 let currentPublicChannel = PUBLIC_CHANNEL;
 let currentVipChannel = VIP_CHANNEL_ID;
@@ -633,7 +691,7 @@ const crmSubscribersRegistry: StoredVIPSubscriber[] = [
     startDate: new Date(nowMs - (4 * dayMs)).toISOString(),
     expiryDate: new Date(nowMs + (26 * dayMs)).toISOString(),
     status: "active",
-    inviteLink: "https://t.me/+jMKV8QQI2VhiZTVh",
+    inviteLink: "", // FAIL CLOSED: enlace generado dinámicamente o vacío
     verifiedByAI: true,
     aiConfidenceScore: 98,
     createdAt: new Date(nowMs - (4 * dayMs)).toISOString(),
@@ -654,7 +712,7 @@ const crmSubscribersRegistry: StoredVIPSubscriber[] = [
     startDate: new Date(nowMs - (5 * dayMs)).toISOString(),
     expiryDate: new Date(nowMs + (2 * dayMs)).toISOString(), // 2 days left -> Expiring Soon!
     status: "expiring_soon",
-    inviteLink: "https://t.me/+jMKV8QQI2VhiZTVh",
+    inviteLink: "", // FAIL CLOSED: enlace generado dinámicamente o vacío
     verifiedByAI: true,
     aiConfidenceScore: 95,
     createdAt: new Date(nowMs - (5 * dayMs)).toISOString(),
@@ -675,7 +733,7 @@ const crmSubscribersRegistry: StoredVIPSubscriber[] = [
     startDate: new Date(nowMs - (12 * dayMs)).toISOString(),
     expiryDate: new Date(nowMs + (78 * dayMs)).toISOString(),
     status: "active",
-    inviteLink: "https://t.me/+jMKV8QQI2VhiZTVh",
+    inviteLink: "", // FAIL CLOSED: enlace generado dinámicamente o vacío
     verifiedByAI: true,
     aiConfidenceScore: 99,
     createdAt: new Date(nowMs - (12 * dayMs)).toISOString(),
@@ -696,7 +754,7 @@ const crmSubscribersRegistry: StoredVIPSubscriber[] = [
     startDate: new Date(nowMs - (8 * dayMs)).toISOString(),
     expiryDate: new Date(nowMs - (1 * dayMs)).toISOString(), // Expired 1 day ago
     status: "expired",
-    inviteLink: "https://t.me/+jMKV8QQI2VhiZTVh",
+    inviteLink: "", // FAIL CLOSED: enlace generado dinámicamente o vacío
     verifiedByAI: true,
     aiConfidenceScore: 94,
     createdAt: new Date(nowMs - (8 * dayMs)).toISOString(),
@@ -969,15 +1027,15 @@ async function createTelegramInviteLink(
       return { ok: true, invite_link: data.result.invite_link };
     } else {
       return { 
-        ok: true, 
-        invite_link: VIP_CHANNEL_INVITE_LINK,
-        error: data.description ? `Telegram API: ${data.description}` : undefined
+        ok: false, 
+        invite_link: "", // FAIL CLOSED: no static fallback
+        error: data.description ? `Telegram API: ${data.description}` : "No se pudo generar enlace de uso único"
       };
     }
   } catch (err: any) {
     return {
-      ok: true,
-      invite_link: VIP_CHANNEL_INVITE_LINK,
+      ok: false,
+      invite_link: "", // FAIL CLOSED: no static fallback
       error: err.message || "Error al conectar con Telegram API"
     };
   }
@@ -1246,15 +1304,17 @@ Analizamos más de 1,500 mercados diarios con el <b>Algoritmo Cuantitativo Propi
 
 🔍 <i>Todos los pronósticos son calculados por algoritmos matemáticos con registro auditable.</i>
 
-📈 <b>Métricas Históricas Consolidadas:</b>
-• 🎯 <b>Tasa de Acierto (Win Rate):</b> 78.4% - 83.3%
-• 🚀 <b>Yield / ROI Promedio:</b> +24.8% mensual
-• 📉 <b>Drawdown Máximo Controlado:</b> -4.2 unidades
+📈 <b>Estado de Métricas:</b>
+• ⚠️ <code>PERFORMANCE_STATUS=UNVERIFIED</code>
+• 🧾 <b>Resultados:</b> Las métricas de rendimiento (win rate, yield, drawdown) se publicarán
+  únicamente cuando estén certificadas por el ledger de señales y la evaluación out-of-sample certificada (F01).
 • ⚖️ <b>Metodología:</b> Criterio Fraccional de Kelly (0.25x)
-• 🔢 <b>Muestra de Partidos Auditados:</b> +1,240 eventos
+• 🔢 <b>Muestra:</b> Sujeta a datos reales verificados — sin afirmaciones no auditadas.
 
-🛡️ <b>¿Por qué el modelo es rentable?</b>
-A diferencia de los tipsters tradicionales que juegan por intuición, nuestro sistema solo envía jugadas cuando la cuota ofrecida por el mercado es sustancialmente mayor a la probabilidad real matemática calculada (+EV > +8%).`,
+🛡️ <b>¿Cómo funciona el modelo?</b>
+Nuestro sistema solo emite señal cuando la cuota ofrecida por el mercado supera la probabilidad
+matemática calculada por el Quant Core (+EV positivo sobre cuotas reales observadas). Ningún valor
+comercial mostrado está inventado.`,
 
   help: `❓ <b>¿CÓMO FUNCIONA FIJAS IA?</b>
 
@@ -1496,54 +1556,40 @@ app.post("/api/telegram/trigger-schedule", async (req, res) => {
 
   let msg = "";
   if (cycleType === "morning_free_pick" || cycleType === "morning_scan") {
-    msg = `🎁 <b>PRONÓSTICO DESTACADO GRATUITO — FIJAS IA</b>
+    msg = `🎁 <b>PRONÓSTICO GRATUITO — FIJAS IA</b>
 
-🏆 <b>Torneo:</b> Liga 1 Perú (Clausura) · ⚔️ <b>Partido:</b> Universitario vs Los Chankas · ⏰ <b>Hora:</b> Hoy, 20:00
+🔒 <b>FAIL CLOSED (PRE-F00):</b> no se publica ningún pronóstico sin datos cuantitativos verificados.
+🧾 El Motor Cuantitativo certificado (F00) habilitará la emisión de señales basadas en cuotas reales,
+estadísticas históricas verificadas y evaluación out-of-sample. No se emiten picks fabricados.
 
-👉 <b>¿A qué apostar?:</b> Universitario -1.5 AH (Gana por 2 o más goles)
-📈 <b>Cuota Recomendada:</b> @1.92 o más (Disponible en todas las casas)
-💰 <b>Stake Sugerido:</b> 2.0 Unidades (Confianza: ALTA ⭐⭐⭐)
-
-🧠 <b>Análisis Táctico IA & xG:</b>
-• Universitario registra 2.45 xG promedio en condición de local y 14 victorias consecutivas.
-• Los Chankas presentan bajas defensivas críticas y conceden 1.8 goles por partido de visita.
+⏳ Programación confirmada disponible en el panel, sin pronósticos inventados.
 
 👑 <i>Canal VIP & Soporte: <a href="https://t.me/SoporteFijasIA_bot">@SoporteFijasIA_bot</a></i>`;
   } else if (cycleType === "golden_parlay_vip") {
     msg = `🔥 <b>COMBINADA DE ORO DEL DÍA — FIJAS IA (PARLAY VIP)</b>
 
-1️⃣ <b>Real Madrid vs Real Sociedad:</b> Real Madrid Gana Directo @1.48
-2️⃣ <b>Liverpool vs Bournemouth:</b> Más de 2.5 Goles Totales @1.52
-3️⃣ <b>Inter de Milán vs Fiorentina:</b> Inter Marca Más de 1.5 Goles @1.40
-
-📊 <b>CUOTA TOTAL COMBINADA:</b> @3.15
-💰 <b>Stake Recomendado:</b> 1.0 Unidad (Moderado)
-🧠 <b>Probabilidad Conjunta IA:</b> 74.2% (+EV)
+🔒 <b>FAIL CLOSED (PRE-F00):</b> la combinada VIP se emite únicamente con el Motor Cuantitativo certificado (F00).
+🧾 No se publican cuotas combinadas, probabilidades conjuntas ni stake sin validación out-of-sample
+y provider de cuotas reales.
 
 👑 <i>Canal VIP & Soporte: <a href="https://t.me/SoporteFijasIA_bot">@SoporteFijasIA_bot</a></i>`;
   } else if (cycleType === "live_settlement") {
-    msg = `✅ <b>¡PRONÓSTICO ACERTADO (+1.84 Unidades)! [Marcador Final: Universitario 3 - 0 Los Chankas]</b>
+    msg = `✅ <b>LIQUIDACIÓN EN VIVO — FIJAS IA</b>
 
-🏆 <b>Partido:</b> Universitario vs Los Chankas
-🎯 <b>Selección:</b> Universitario -1.5 AH
-📈 <b>Cuota Cerrada:</b> @1.92
-🏦 <i>Bankroll auditado y sumado en vivo.</i>
+🔒 <b>FAIL CLOSED (PRE-F00):</b> el settlement automático requiere el ledger de señales certificado (F00).
+🧾 No se reportan unidades ni resultados auditados sin registro verificado de señal emitida y resultado real.
 
 👑 <i>Canal VIP & Soporte: <a href="https://t.me/SoporteFijasIA_bot">@SoporteFijasIA_bot</a></i>`;
   } else if (cycleType === "nightly_audit") {
     const today = new Date().toLocaleDateString("es-PE");
-    msg = `📊 <b>CIERRE DIARIO AUDITADO — FIJAS IA</b>
+    msg = `📊 <b>CIERRE DIARIO — FIJAS IA</b>
 📅 <b>Fecha:</b> ${today}
 
-📋 <b>Picks Enviados:</b> 6
-✅ <b>Ganadas:</b> 5
-❌ <b>Perdidas:</b> 1
-🎯 <b>Win Rate:</b> 83.3%
-📈 <b>Rendimiento (Yield):</b> +28.4%
-💰 <b>Balance Neto del Día:</b> +5.68 Unidades (+S/. 113.60)
-🏦 <b>Bankroll Total Auditado:</b> S/. 1,113.60
+⚠️ <code>PERFORMANCE_STATUS=UNVERIFIED</code>
+🧾 Las métricas de rendimiento se publicarán únicamente al ser certificadas por el ledger de señales
+y la evaluación out-of-sample (F01). Hasta entonces no se muestran win rate, yield, ni balance auditado.
 
-🤖 <i>Auditoría matemática verificada 24/7.</i>
+🤖 <i>Motor cuantitativo operativo — resultados pendientes de certificación.</i>
 👑 <i>Canal VIP & Soporte: <a href="https://t.me/SoporteFijasIA_bot">@SoporteFijasIA_bot</a></i>`;
   } else {
     msg = MESSAGES.plans;
@@ -1559,7 +1605,7 @@ app.get("/api/telegram/channels-config", (req, res) => {
     ok: true,
     publicChannel: currentPublicChannel,
     vipChannel: currentVipChannel,
-    vipInviteLink: VIP_CHANNEL_INVITE_LINK
+    vipInviteLink: "" // FAIL CLOSED: enlace generado dinámicamente o vacío
   });
 });
 
@@ -1614,57 +1660,32 @@ app.post("/api/telegram/broadcast-public-free", async (req, res) => {
   });
   const todayCapitalized = todayLimaStr.charAt(0).toUpperCase() + todayLimaStr.slice(1);
 
-  let freePicksBody = "";
-  if (espnData && espnData.freePicks && espnData.freePicks.length >= 2) {
-    const picks = espnData.freePicks.slice(0, 3);
-    freePicksBody = picks.map((m, idx) => {
-      const p = m.recommendedPick!;
-      return `${idx + 1}️⃣ ${m.sportEmoji} <b>${m.homeTeam} vs ${m.awayTeam}</b> (${m.league})\n• ⏰ <b>Hora:</b> ${m.kickoffLima} | 🏟️ <i>${m.venue}</i>\n• 👉 <b>Pronóstico Gratuito:</b> <b>${p.selection}</b>\n• 📈 <b>Cuota:</b> <b>@${p.odds.toFixed(2)}</b> | 🎯 <b>Probabilidad Modelo:</b> <b>${p.modelProb.toFixed(1)}%</b> | 🧠 <b>Edge:</b> <b>+${p.edge.toFixed(1)}%</b>\n• 💰 <b>Stake Recomendado:</b> <b>${p.stakeUnits.toFixed(1)} Unidades</b> (Kelly 0.25x)\n• 🔍 <b>Análisis Táctico & xG:</b> ${p.analysis}`;
+let freePicksBody = "";
+  if (espnData && espnData.allScheduled && espnData.allScheduled.length >= 2) {
+    const matches = espnData.allScheduled.slice(0, 3);
+    freePicksBody = matches.map((m, idx) => {
+      return `${idx + 1}️⃣ ${m.sportEmoji} <b>${m.homeTeam} vs ${m.awayTeam}</b> (${m.league})\n• ⏰ <b>Hora:</b> ${m.kickoffLima} | 🏟️ <i>${m.venue}</i>\n• 🔒 <b>Pronóstico cuantitativo:</b> FAIL CLOSED — pendiente de verificación (F00)`;
     }).join('\n\n━━━━━━━━━━━━━━━━━━━━━\n');
   } else {
-    // Fallback con partidos reales futuros confirmados de hoy
-    freePicksBody = `1️⃣ 🇵🇪 <b>Universitario vs Los Chankas CYC</b> (Liga 1 Clausura)
-• ⏰ <b>Hora:</b> Hoy 18:30 (6:30 p.m. Lima) | 🏟️ <i>Estadio Monumental de Lima</i>
-• 👉 <b>Pronóstico Gratuito:</b> <b>Universitario -1.5 AH</b> (Gana por 2 o más goles)
-• 📈 <b>Cuota:</b> <b>@1.92</b> | 🎯 <b>Probabilidad Modelo:</b> <b>76.5%</b> | 🧠 <b>Edge:</b> <b>+13.6%</b>
-• 💰 <b>Stake Recomendado:</b> <b>2.0 Unidades</b> (Kelly 0.25x)
-• 🔍 <b>Análisis Táctico & xG:</b> Universitario registra 2.45 xG promedio de local y 14 victorias consecutivas en el Monumental. Los Chankas presentan bajas defensivas críticas y conceden 1.8 goles de visita.
-
-━━━━━━━━━━━━━━━━━━━━━
-2️⃣ 🇪🇸 <b>Elche vs Barcelona</b> (La Liga EA Sports)
-• ⏰ <b>Hora:</b> Hoy 14:30 (2:30 p.m. Lima) | 🏟️ <i>Estadio Martínez Valero</i>
-• 👉 <b>Pronóstico Gratuito:</b> <b>Barcelona Gana y Más de 1.5 Goles Totales</b>
-• 📈 <b>Cuota:</b> <b>@1.58</b> | 🎯 <b>Probabilidad Modelo:</b> <b>78.0%</b> | 🧠 <b>Edge:</b> <b>+12.4%</b>
-• 💰 <b>Stake Recomendado:</b> <b>2.0 Unidades</b>
-• 🔍 <b>Análisis Táctico & xG:</b> Barcelona registra 2.70 xG en sus últimas salidas y 68% de posesión dominante; Elche sufre ante transiciones rápidas.
-
-━━━━━━━━━━━━━━━━━━━━━
-3️⃣ 🇮🇹 <b>Torino vs AC Milan</b> (Serie A Italia)
-• ⏰ <b>Hora:</b> Hoy 13:45 (1:45 p.m. Lima) | 🏟️ <i>Stadio Olimpico Grande Torino</i>
-• 👉 <b>Pronóstico Gratuito:</b> <b>AC Milan Ganador Directo (o Empate No Acción)</b>
-• 📈 <b>Cuota:</b> <b>@1.85</b> | 🎯 <b>Probabilidad Modelo:</b> <b>65.0%</b> | 🧠 <b>Edge:</b> <b>+11.5%</b>
-• 💰 <b>Stake Recomendado:</b> <b>1.5 Unidades</b>
-• 🔍 <b>Análisis Táctico & xG:</b> Milan promedia 1.95 xG y un 78% de efectividad en repliegues ofensivos frente a la línea de 3 de Torino.`;
+    // FAIL CLOSED: sin partidos futuros verificados -> sin pronósticos inventados
+    freePicksBody = `🔒 <b>FAIL CLOSED (PRE-F00):</b> no hay partidos futuros confirmados con datos verificables.
+Los pronósticos se publicarán únicamente cuando el pipeline cuantitativo certificado (F00)
+valide cuotas reales y estadísticas históricas verificadas.`;
   }
 
   const publicFreeMsg = `🎁 <b>PRONÓSTICOS GRATUITOS DEL DÍA — FIJAS IA</b>
-📅 <b>Jornada:</b> ${todayCapitalized} · 🤖 <b>Filtro Cuantitativo:</b> +EV > +10.0%
-🌟 <i>Pronósticos abiertos seleccionados para la comunidad de Fijas IA (Pre-Partido en Vivo).</i>
+📅 <b>Jornada:</b> ${todayCapitalized} · 🔒 <b>Estado:</b> FAIL CLOSED (datos sin certificar)
+🌟 <i>Sin señales fabricadas: la emisión cuantitativa se habilita en F00 con datos verificados.</i>
 
-━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━
 ${freePicksBody}
 
-━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━
 🔥 <b>¿QUIERES TODA LA CARTELERA VIP DE HOY?</b>
-En el <b>Canal VIP</b> ya se publicaron:
-• 🇵🇪 <b>Melgar vs Alianza Lima</b> (Hoy 15:30 Lima | @1.70)
-• 🇮🇹 <b>Atalanta vs Sassuolo</b> (Hoy 13:45 Lima | @1.62)
-• 🇦🇷 <b>River Plate vs Vélez</b> (Hoy 17:15 Lima | @1.65)
-• ⚾ <b>LA Dodgers vs Pirates</b> (Hoy 15:10 Lima | @1.55)
-• 🏀 <b>Indiana Fever vs Sky</b> (Hoy 18:00 Lima | @1.90)
-• 👑 <b>COMBINADA DE ORO VIP @2.62</b> (3 selecciones de alta certeza >80%)
+El <b>Canal VIP</b> activará sus pronósticos con el Motor Cuantitativo certificado (F00).
+Por el momento NO se emiten probabilidades, cuotas, edges ni stakes inventados.
 
-👑 <i>Suscríbete al VIP y recibe todas las señales en: <a href="https://t.me/SoporteFijasIA_bot">@SoporteFijasIA_bot</a></i>`;
+👑 <i>Suscríbete al VIP y recibe las señales en: <a href="https://t.me/SoporteFijasIA_bot">@SoporteFijasIA_bot</a></i>`;
 
   const resSend = await sendRawTelegramMessage(chat, publicFreeMsg, PUBLIC_CHANNEL_FREE_KEYBOARD, SIGNALS_BOT_TOKEN);
   res.json({
@@ -1688,20 +1709,15 @@ app.post("/api/telegram/broadcast-vip-teaser", async (req, res) => {
   });
   const todayCapitalized = todayLimaStr.charAt(0).toUpperCase() + todayLimaStr.slice(1);
 
-  const teaserMsg = `👑 <b>¡SEÑALES VIP & COMBINADA DE ORO EMITIDAS EN EL CANAL VIP!</b>
-📅 <b>Jornada:</b> ${todayCapitalized} · 🤖 <b>Filtro Cuantitativo VIP:</b> Alta Certeza & +EV
+  const teaserMsg = `👑 <b>CANAL VIP — FIJAS IA</b>
+📅 <b>Jornada:</b> ${todayCapitalized} · 🔒 <b>Estado:</b> FAIL CLOSED (PRE-F00)
 
 ━━━━━━━━━━━━━━━━━━━━━
-🌟 <b>CONTENIDO EXCLUSIVO PUBLICADO EN EL CANAL VIP:</b>
+🌟 <b>CONTENIDO EXCLUSIVO DEL CANAL VIP:</b>
 ━━━━━━━━━━━━━━━━━━━━━
-1️⃣ 👑 <b>COMBINADA DE ORO VIP (@2.62):</b>
-   • Multiplicador de 3 partidos reales de hoy con >80% de probabilidad matemática individual (Liga 1 + La Liga + MLB).
-   • Retorno Proyectado: S/. 327.50 con 2.5u de inversión (+S/. 202.50 neto).
-
-2️⃣ ⚽ <b>Fútbol VIP:</b> Melgar vs Alianza Lima (@1.70, Hoy 15:30 Lima) & Atalanta vs Sassuolo (@1.62, Hoy 13:45 Lima) & River Plate (@1.65, Hoy 17:15 Lima).
-3️⃣ ⚾ <b>MLB VIP:</b> LA Dodgers Ganador Moneyline (@1.55, Hoy 15:10 Lima) & Padres vs Twins (@1.72).
-4️⃣ 🏀 <b>Básquetbol VIP:</b> Indiana Fever -4.5 Puntos (@1.90, Hoy 18:00 Lima).
-5️⃣ 🇧🇷 <b>Brasileirão VIP:</b> Palmeiras Ganador Directo (@1.52, Hoy 14:00 Lima).
+🔒 Los pronósticos VIP (probabilidad, edge, stake y combinadas) se activarán únicamente
+con el Motor Cuantitativo certificado (F00), tras validar cuotas reales y estadísticas
+históricas verificadas. No se emiten señales ni combinadas inventadas en esta etapa.
 
 ━━━━━━━━━━━━━━━━━━━━━
 💳 <b>PLANES DE ACCESO VIP DISPONIBLES:</b>
@@ -1738,131 +1754,50 @@ app.post("/api/telegram/broadcast-by-sport", async (req, res) => {
   });
   const todayCapitalized = todayLimaStr.charAt(0).toUpperCase() + todayLimaStr.slice(1);
 
-  const sportMessages: Record<string, { title: string; text: string }> = {
-    football: {
-      title: "⚽ Fútbol de Élite (Liga 1 & Internacional) — VIP",
-      text: `👑 <b>PRONÓSTICOS EXCLUSIVOS VIP — FÚTBOL DE ÉLITE</b>
-📅 <b>Jornada:</b> ${todayCapitalized} · 🤖 <b>Filtro Cuantitativo VIP:</b> +EV > +9.0%
+  // FAIL CLOSED (PRE-F00): mensajes VIP construidos únicamente con programación
+  // real verificada (ESPN). Sin cuotas, probabilidades, edges ni stakes inventados.
+  let espnData;
+  try {
+    espnData = await fetchLiveESPNFutureMatches();
+  } catch (e) {
+    console.error("Error fetching ESPN data:", e);
+  }
+  const realMatches = (espnData && espnData.allScheduled) || [];
 
-━━━━━━━━━━━━━━━━━━━━━
-1️⃣ 🇵🇪 <b>Universitario vs Los Chankas CYC</b> (Liga 1 Clausura)
-• ⏰ <b>Hora:</b> Hoy 18:30 (6:30 p.m. Lima) | 🏟️ <i>Monumental de Lima</i>
-• 👉 <b>Pronóstico:</b> <b>Universitario -1.5 AH</b> (Gana por 2+ goles)
-• 📈 <b>Cuota:</b> <b>@1.92</b> | 🎯 <b>Probabilidad Modelo:</b> <b>76.5%</b> | 🧠 <b>Edge:</b> <b>+13.6%</b>
-• 💰 <b>Stake:</b> <b>2.0 Unidades</b> (Kelly 0.25x)
-• 🔍 <b>Análisis Táctico & xG:</b> Universitario registra 2.45 xG promedio de local y 14 victorias consecutivas en el Monumental. Los Chankas conceden 1.8 goles de visita.
-
-━━━━━━━━━━━━━━━━━━━━━
-2️⃣ 🇵🇪 <b>FBC Melgar vs Alianza Lima</b> (Liga 1 Clausura)
-• ⏰ <b>Hora:</b> Hoy 15:30 (3:30 p.m. Lima) | 🏟️ <i>Estadio Monumental de la UNSA</i>
-• 👉 <b>Pronóstico:</b> <b>Melgar 1X (Gana o Empata) + Más de 1.5 Goles</b>
-• 📈 <b>Cuota:</b> <b>@1.70</b> | 🎯 <b>Probabilidad Modelo:</b> <b>73.0%</b> | 🧠 <b>Edge:</b> <b>+11.2%</b>
-• 💰 <b>Stake:</b> <b>2.0 Unidades</b>
-• 🔍 <b>Análisis Táctico:</b> Melgar invicto en altura de Arequipa (2,335 m) promediando 2.15 xG; Alianza llega con rotación defensiva.
-
-━━━━━━━━━━━━━━━━━━━━━
-3️⃣ 🇪🇸 <b>Elche vs Barcelona</b> (La Liga EA Sports)
-• ⏰ <b>Hora:</b> Hoy 14:30 (2:30 p.m. Lima) | 🏟️ <i>Estadio Martínez Valero</i>
-• 👉 <b>Pronóstico:</b> <b>Barcelona Gana + Más de 1.5 Goles</b>
-• 📈 <b>Cuota:</b> <b>@1.58</b> | 🎯 <b>Probabilidad Modelo:</b> <b>78.0%</b> | 🧠 <b>Edge:</b> <b>+12.4%</b>
-• 💰 <b>Stake:</b> <b>2.0 Unidades</b> (Alta Certeza)
-• 🔍 <b>Análisis Táctico:</b> Barcelona supera los 2.70 xG en sus últimas jornadas con 68% de posesión dominante.
-
-━━━━━━━━━━━━━━━━━━━━━
-4️⃣ 🇮🇹 <b>Atalanta vs Sassuolo</b> (Serie A Italia)
-• ⏰ <b>Hora:</b> Hoy 13:45 (1:45 p.m. Lima) | 🏟️ <i>New Balance Arena</i>
-• 👉 <b>Pronóstico:</b> <b>Atalanta Ganador Directo + Over 1.5</b>
-• 📈 <b>Cuota:</b> <b>@1.62</b> | 🎯 <b>Probabilidad Modelo:</b> <b>75.5%</b> | 🧠 <b>Edge:</b> <b>+11.0%</b>
-• 💰 <b>Stake:</b> <b>2.0 Unidades</b>
-• 🔍 <b>Análisis Táctico:</b> Atalanta promedia 2.30 xG de local y 84% de recuperación en campo rival.
-
-━━━━━━━━━━━━━━━━━━━━━
-5️⃣ 🇦🇷 <b>River Plate vs Vélez Sarsfield</b> (Liga Profesional)
-• ⏰ <b>Hora:</b> Hoy 17:15 (5:15 p.m. Lima) | 🏟️ <i>Estadio Monumental</i>
-• 👉 <b>Pronóstico:</b> <b>River Plate Ganador Directo (1X2)</b>
-• 📈 <b>Cuota:</b> <b>@1.65</b> | 🎯 <b>Probabilidad Modelo:</b> <b>74.0%</b> | 🧠 <b>Edge:</b> <b>+10.8%</b>
-• 💰 <b>Stake:</b> <b>2.0 Unidades</b>
-• 🔍 <b>Análisis Táctico:</b> River mantiene un xG permitido menor a 0.70 en Núñez con presión constante.
-
-👑 <i>Canal VIP Exclusivo & Soporte: <a href="https://t.me/SoporteFijasIA_bot">@SoporteFijasIA_bot</a></i>`
-    },
-    baseball: {
-      title: "⚾ Béisbol MLB — VIP",
-      text: `👑 <b>PRONÓSTICOS EXCLUSIVOS VIP — BÉISBOL MLB</b>
-📅 <b>Jornada:</b> ${todayCapitalized} · 🤖 <b>Filtro Cuantitativo VIP:</b> Duelo de Abridores & Factor Viento
-
-━━━━━━━━━━━━━━━━━━━━━
-1️⃣ 🇺🇸 <b>LA Dodgers vs Pittsburgh Pirates</b> (MLB)
-• ⏰ <b>Hora:</b> Hoy 15:10 (3:10 p.m. Lima) | 🏟️ <i>Dodger Stadium, Los Ángeles</i>
-• 👉 <b>Pronóstico:</b> <b>Los Angeles Dodgers Ganador (Moneyline)</b>
-• 📈 <b>Cuota:</b> <b>@1.55</b> | 🎯 <b>Probabilidad Modelo:</b> <b>75.0%</b> | 🧠 <b>Edge:</b> <b>+10.7%</b>
-• 💰 <b>Stake:</b> <b>2.0 Unidades</b>
-• 🔍 <b>Análisis Cuantitativo:</b> Abridor con ERA de 2.85 y wOBA ofensivo de Dodgers de .348 frente a lanzadores diestros.
-
-━━━━━━━━━━━━━━━━━━━━━
-2️⃣ 🇺🇸 <b>San Diego Padres vs Minnesota Twins</b> (MLB)
-• ⏰ <b>Hora:</b> Hoy 15:10 (3:10 p.m. Lima) | 🏟️ <i>Petco Park</i>
-• 👉 <b>Pronóstico:</b> <b>Padres Ganador (Moneyline)</b>
-• 📈 <b>Cuota:</b> <b>@1.72</b> | 🎯 <b>Probabilidad Modelo:</b> <b>64.0%</b> | 🧠 <b>Edge:</b> <b>+10.2%</b>
-• 💰 <b>Stake:</b> <b>1.5 Unidades</b>
-• 🔍 <b>Análisis Cuantitativo:</b> Bullpen superior y rendimiento dominante en casa.
-
-👑 <i>Canal VIP Exclusivo & Soporte: <a href="https://t.me/SoporteFijasIA_bot">@SoporteFijasIA_bot</a></i>`
-    },
-    basketball: {
-      title: "🏀 Básquetbol WNBA / NBA — VIP",
-      text: `👑 <b>PRONÓSTICOS EXCLUSIVOS VIP — BÁSQUETBOL</b>
-📅 <b>Jornada:</b> ${todayCapitalized} · 🤖 <b>Filtro Cuantitativo VIP:</b> Eficiencia Ofensiva & Pace
-
-━━━━━━━━━━━━━━━━━━━━━
-1️⃣ 🇺🇸 <b>Chicago Sky vs Indiana Fever</b> (WNBA)
-• ⏰ <b>Hora:</b> Hoy 18:00 (6:00 p.m. Lima) | 🏟️ <i>Wintrust Arena, Chicago</i>
-• 👉 <b>Pronóstico:</b> <b>Indiana Fever -4.5 Puntos (o Más de 168.5 Puntos)</b>
-• 📈 <b>Cuota:</b> <b>@1.90</b> | 🎯 <b>Probabilidad Modelo:</b> <b>60.5%</b> | 🧠 <b>Edge:</b> <b>+11.8%</b>
-• 💰 <b>Stake:</b> <b>2.0 Unidades</b>
-• 🔍 <b>Análisis Cuantitativo:</b> Pace acelerado (>82.5 posesiones) y efectividad perimetral de Caitlin Clark ante la defensa interior de Sky.
-
-━━━━━━━━━━━━━━━━━━━━━
-2️⃣ 🇺🇸 <b>Boston Celtics vs Miami Heat</b> (NBA)
-• ⏰ <b>Hora:</b> Hoy 19:30 (7:30 p.m. Lima) | 🏟️ <i>TD Garden, Boston</i>
-• 👉 <b>Pronóstico:</b> <b>Boston Celtics -6.5 Puntos (Hándicap)</b>
-• 📈 <b>Cuota:</b> <b>@1.90</b> | 🎯 <b>Probabilidad Modelo:</b> <b>58.8%</b> | 🧠 <b>Edge:</b> <b>+11.8%</b>
-• 💰 <b>Stake:</b> <b>2.0 Unidades</b>
-• 🔍 <b>Análisis Cuantitativo:</b> Miami llega con fatiga tras prórroga (Herro con molestias). Boston tiene Offensive Rating de 121.4 frente al 113.8 defensivo de Miami.
-
-👑 <i>Canal VIP Exclusivo & Soporte: <a href="https://t.me/SoporteFijasIA_bot">@SoporteFijasIA_bot</a></i>`
-    },
-    tennis: {
-      title: "🎾 Tenis ATP Masters 1000 — VIP",
-      text: `👑 <b>PRONÓSTICOS EXCLUSIVOS VIP — TENIS ATP MASTERS 1000</b>
-📅 <b>Jornada:</b> ${todayCapitalized} · 🤖 <b>Filtro Cuantitativo VIP:</b> Rendimiento en Pista Rápida & Hold %
-
-━━━━━━━━━━━━━━━━━━━━━
-1️⃣ 🇪🇸 <b>Carlos Alcaraz vs Jannik Sinner</b> 🇮🇹 (ATP Masters 1000)
-• ⏰ <b>Hora:</b> Hoy 16:00 (4:00 p.m. Lima) | 🏟️ <i>Arthur Ashe Stadium (Pista Rápida)</i>
-• 👉 <b>Pronóstico:</b> <b>Carlos Alcaraz Ganador (ML) o Más de 22.5 Juegos</b>
-• 📈 <b>Cuota:</b> <b>@1.72 (ML) / @1.95 (Over)</b> | 🎯 <b>Probabilidad Modelo:</b> <b>58.1%</b> | 🧠 <b>Edge:</b> <b>+13.3%</b>
-• 💰 <b>Stake:</b> <b>1.5 Unidades</b>
-• 🔍 <b>Análisis Cuantitativo:</b> 68.5% de primeros saques y 44% de conversión de quiebres. Promedio de 24.6 juegos en sus últimos enfrentamientos directos.
-
-👑 <i>Canal VIP Exclusivo & Soporte: <a href="https://t.me/SoporteFijasIA_bot">@SoporteFijasIA_bot</a></i>`
-    },
-    mma: {
-      title: "🥊 UFC / Artes Marciales Mixtas — VIP",
-      text: `👑 <b>PRONÓSTICO DESTACADO VIP — UFC CAMPEONATO</b>
-📅 <b>Jornada:</b> ${todayCapitalized} · 🤖 <b>Filtro Cuantitativo VIP:</b> Defensa de Derribo & Asaltos
-
-━━━━━━━━━━━━━━━━━━━━━
-1️⃣ <b>Islam Makhachev vs Arman Tsarukyan</b> (UFC Peso Ligero)
-• ⏰ <b>Hora:</b> Hoy 22:30 (10:30 p.m. Lima) | 🏟️ <i>T-Mobile Arena, Las Vegas</i>
-• 👉 <b>Pronóstico:</b> <b>Más de 2.5 Asaltos (Pasa al Round 3)</b>
-• 📈 <b>Cuota:</b> <b>@1.78</b> | 🎯 <b>Probabilidad Modelo:</b> <b>63.3%</b> | 🧠 <b>Edge:</b> <b>+12.6%</b>
-• 💰 <b>Stake:</b> <b>2.0 Unidades</b>
-• 🔍 <b>Análisis Cuantitativo:</b> Ambos peleadores registran defensas de derribo superiores al 85% y gran nivel de lucha olímpica, lo que neutraliza finalizaciones tempranas.
-
-👑 <i>Canal VIP Exclusivo & Soporte: <a href="https://t.me/SoporteFijasIA_bot">@SoporteFijasIA_bot</a></i>`
-    }
+  const sportMeta: Record<string, { title: string; emoji: string }> = {
+    football: { title: "⚽ Fútbol de Élite (Liga 1 & Internacional) — VIP", emoji: "⚽" },
+    baseball: { title: "⚾ Béisbol MLB — VIP", emoji: "⚾" },
+    basketball: { title: "🏀 Básquetbol WNBA / NBA — VIP", emoji: "🏀" },
+    tennis: { title: "🎾 Tenis ATP Masters 1000 — VIP", emoji: "🎾" },
+    mma: { title: "🥊 UFC / Artes Marciales Mixtas — VIP", emoji: "🥊" }
   };
+
+  const sportMessages: Record<string, { title: string; text: string }> = {};
+
+  for (const key of Object.keys(sportMeta) as Array<keyof typeof sportMeta>) {
+    const meta = sportMeta[key];
+    const sportMatches = realMatches.filter(m => m.sport === key).slice(0, 4);
+
+    let body: string;
+    if (sportMatches.length === 0) {
+      body = `🔒 <b>FAIL CLOSED (PRE-F00):</b> sin partidos ${meta.emoji} futuros confirmados con datos verificables.\nLos pronósticos VIP ${meta.emoji} se habilitarán con el Motor Cuantitativo certificado (F00).`;
+    } else {
+      body = sportMatches.map((m, idx) =>
+        `${idx + 1}️⃣ ${m.sportEmoji} <b>${m.homeTeam} vs ${m.awayTeam}</b> (${m.league})\n• ⏰ <b>Hora:</b> ${m.kickoffLima} | 🏟️ <i>${m.venue}</i>\n• 🔒 <b>Pronóstico cuantitativo:</b> FAIL CLOSED — pendiente de verificación (F00)`
+      ).join('\n\n━━━━━━━━━━━━━━━━━━━━━\n');
+    }
+
+    sportMessages[key] = {
+      title: meta.title,
+      text: `👑 <b>PRONÓSTICOS EXCLUSIVOS VIP — ${meta.emoji}</b>
+📅 <b>Jornada:</b> ${todayCapitalized} · 🔒 <b>Estado:</b> FAIL CLOSED (datos sin certificar)
+
+━━━━━━━━━━━━━━━━━━━━━
+${body}
+
+👑 <i>Canal VIP Exclusivo & Soporte: <a href="https://t.me/SoporteFijasIA_bot">@SoporteFijasIA_bot</a></i>`
+    };
+  }
 
   const results: any[] = [];
 
@@ -1925,6 +1860,13 @@ async function processBotUpdate(update: any, botToken: string) {
           // Generate single-use invite and register
           const inviteRes = await generateSingleUseVIPInvite(VIP_CHANNEL_ID, "Miembro VIP", "👑 Pase VIP", botToken);
           const vipInviteLink = inviteRes.inviteLink;
+
+          if (!vipInviteLink) {
+            // FAIL CLOSED: no se entrega acceso con enlace estático/ficticio.
+            await sendRawTelegramMessage(chatId, `⚠️ <b>ERROR DE INVITE:</b> No se pudo generar el enlace de uso único para <code>${targetChatId}</code>. Reintentar manualmente.`, undefined, botToken);
+            return;
+          }
+
           updateCustomer(targetChatId, { leadStatus: 'VIP_ACTIVE', paymentStatus: 'APPROVED', membershipStatus: 'ACTIVE', assignedInviteLink: vipInviteLink });
 
           const welcomeMsg = `🎉 <b>¡PAGO VERIFICADO Y APROBADO CON ÉXITO!</b>\n━━━━━━━━━━━━━━━━━━━━\n👑 <b>¡Bienvenido al Canal VIP Oficial de FIJAS IA!</b>\n\nTu suscripción ha sido activada por el Administrador.\n👉 <b>Haz clic en el enlace para unirte (1 Solo Uso):</b>\n<a href="${vipInviteLink}">${vipInviteLink}</a>\n\n${ONBOARDING_GUIDE_TEXT}`;
@@ -2101,8 +2043,12 @@ async function processBotUpdate(update: any, botToken: string) {
 }
 
 // Separate Independent Polling Loop for Signals Bot
-async function pollSignalsBotLoop() {
+async function pollSignalsBotLoop(holdsLock = false) {
   if (!isPollingActive) return;
+  // FAIL CLOSED (PRE-F00): un solo poller por bot en todo el ecosistema.
+  if (TELEGRAM_COMPROMISED) return;
+  if (!holdsLock && !acquireTelegramPollLock("signals")) return;
+  if (!holdsLock) holdsLock = true;
 
   try {
     const url = `https://api.telegram.org/bot${SIGNALS_BOT_TOKEN}/getUpdates?offset=${signalsOffset}&timeout=4`;
@@ -2130,13 +2076,17 @@ async function pollSignalsBotLoop() {
   }
 
   if (isPollingActive) {
-    setTimeout(pollSignalsBotLoop, 1200);
+    setTimeout(() => pollSignalsBotLoop(true), 1200);
   }
 }
 
 // Separate Independent Polling Loop for Support Bot
-async function pollSupportBotLoop() {
+async function pollSupportBotLoop(holdsLock = false) {
   if (!isPollingActive) return;
+  // FAIL CLOSED (PRE-F00): un solo poller por bot en todo el ecosistema.
+  if (TELEGRAM_COMPROMISED) return;
+  if (!holdsLock && !acquireTelegramPollLock("support")) return;
+  if (!holdsLock) holdsLock = true;
 
   try {
     const url = `https://api.telegram.org/bot${SUPPORT_BOT_TOKEN}/getUpdates?offset=${supportOffset}&timeout=4`;
@@ -2165,12 +2115,18 @@ async function pollSupportBotLoop() {
   }
 
   if (isPollingActive) {
-    setTimeout(pollSupportBotLoop, 1200);
+    setTimeout(() => pollSupportBotLoop(true), 1200);
   }
 }
 
 // Initialize and auto-verify both bot tokens
 async function initializeTelegramBots() {
+  // FAIL CLOSED (PRE-F00): si el entorno declara compromiso, no arranca ningún bot.
+  if (TELEGRAM_COMPROMISED) {
+    console.error(`[TelegramSafety] TELEGRAM_COMPROMISE_STATUS=${TELEGRAM_COMPROMISE_STATUS} → FAIL CLOSED: bots NO arrancan (sin getMe, sin deleteWebhook, sin polling).`);
+    isPollingActive = false;
+    return;
+  }
   // Verify Signals Bot
   try {
     const res = await fetch(`https://api.telegram.org/bot${SIGNALS_BOT_TOKEN}/getMe`);
@@ -2193,8 +2149,10 @@ async function initializeTelegramBots() {
     }
   } catch (e) {}
 
-  // Launch continuous support bot polling loop
-  setTimeout(pollSupportBotLoop, 500);
+  // Launch continuous support bot polling loop (single-instance)
+  if (acquireTelegramPollLock("support")) {
+    setTimeout(() => pollSupportBotLoop(true), 500);
+  }
 }
 
 
@@ -2209,6 +2167,8 @@ app.get("/api/telegram/bot-status", (req, res) => {
     publicChannel: PUBLIC_CHANNEL,
     vipChannel: VIP_CHANNEL_ID,
     isPollingActive,
+    telegramCompromised: TELEGRAM_COMPROMISED,
+    compromiseStatus: TELEGRAM_COMPROMISE_STATUS,
     messagesHandledCount,
     confirmedSubscribersCount: crmSubscribersRegistry.length,
     activeSubscribersCount: stats.activeSubscribers,
@@ -2282,7 +2242,7 @@ app.post("/api/telegram/crm/enroll-subscriber", async (req, res) => {
 
   // Generate 1-use invite link
   const linkRes = await createTelegramInviteLink(VIP_CHANNEL_ID, subName, planObj.name, 1, SUPPORT_BOT_TOKEN);
-  const inviteLink = linkRes.invite_link || VIP_CHANNEL_INVITE_LINK;
+  const inviteLink = linkRes.invite_link || ""; // FAIL CLOSED: no static fallback
 
   const now = Date.now();
   const expiryDate = new Date(now + duration * 86400000).toISOString();
@@ -2312,30 +2272,38 @@ app.post("/api/telegram/crm/enroll-subscriber", async (req, res) => {
   crmSubscribersRegistry.unshift(newSub);
 
   let telegramSent = false;
+  let invitePending = false;
   if (sendDirectTelegram && chatId) {
-    const deliveryMsg = formatVipWelcomeDeliveryMessage(
-      subName,
-      planObj.name,
-      inviteLink,
-      duration,
-      new Date(expiryDate).toLocaleDateString("es-PE"),
-      subAmount,
-      newSub.operationNumber
-    );
-    const keyboard = {
-      inline_keyboard: [
-        [{ text: "👑 Ingresar al Canal VIP (1 Solo Uso)", url: inviteLink }],
-        [{ text: "📩 Soporte", url: `https://t.me/${SUPPORT_BOT_USERNAME.replace('@', '')}` }]
-      ]
-    };
-    const sendResult = await sendRawTelegramMessage(chatId, deliveryMsg, keyboard, SUPPORT_BOT_TOKEN);
-    telegramSent = sendResult.ok;
+    if (!inviteLink) {
+      // FAIL CLOSED: no se envía enlace vacío/ficticio al usuario.
+      invitePending = true;
+      console.warn(`[CRM] Invite pending for ${subName} (${chatId}): createChatInviteLink no devolvió enlace.`);
+    } else {
+      const deliveryMsg = formatVipWelcomeDeliveryMessage(
+        subName,
+        planObj.name,
+        inviteLink,
+        duration,
+        new Date(expiryDate).toLocaleDateString("es-PE"),
+        subAmount,
+        newSub.operationNumber
+      );
+      const keyboard = {
+        inline_keyboard: [
+          [{ text: "👑 Ingresar al Canal VIP (1 Solo Uso)", url: inviteLink }],
+          [{ text: "📩 Soporte", url: `https://t.me/${SUPPORT_BOT_USERNAME.replace('@', '')}` }]
+        ]
+      };
+      const sendResult = await sendRawTelegramMessage(chatId, deliveryMsg, keyboard, SUPPORT_BOT_TOKEN);
+      telegramSent = sendResult.ok;
+    }
   }
 
   res.json({
     ok: true,
     subscriber: enrichSubscriber(newSub),
     inviteLink,
+    invitePending,
     telegramSent
   });
 });
@@ -2529,7 +2497,7 @@ app.post("/api/telegram/confirm-subscriber", async (req, res) => {
   const paymentMethod = method || "Yape / Binance Pay";
 
   const linkRes = await createTelegramInviteLink(VIP_CHANNEL_ID, subName, subPlan, 1, SUPPORT_BOT_TOKEN);
-  const inviteLink = linkRes.invite_link || VIP_CHANNEL_INVITE_LINK;
+  const inviteLink = linkRes.invite_link || ""; // FAIL CLOSED: no static fallback
 
   const newSub: StoredVIPSubscriber = {
     id: `sub-${Date.now()}`,
@@ -2556,31 +2524,44 @@ app.post("/api/telegram/confirm-subscriber", async (req, res) => {
   crmSubscribersRegistry.unshift(newSub);
 
   let telegramSent = false;
+  let invitePending = false;
   if (sendDirectTelegram && chatId) {
-    const deliveryMsg = formatVipWelcomeDeliveryMessage(subName, subPlan, inviteLink);
-    const keyboard = {
-      inline_keyboard: [
-        [{ text: "👑 Ingresar al Canal VIP (1 Solo Uso)", url: inviteLink }],
-        [{ text: "📩 Soporte", url: `https://t.me/${SUPPORT_BOT_USERNAME.replace('@', '')}` }]
-      ]
-    };
-    const sendResult = await sendRawTelegramMessage(chatId, deliveryMsg, keyboard, SUPPORT_BOT_TOKEN);
-    telegramSent = sendResult.ok;
+    if (!inviteLink) {
+      // FAIL CLOSED: no se envía enlace vacío/ficticio al usuario.
+      invitePending = true;
+      console.warn(`[CRM] Invite pending for ${subName} (${chatId}): createChatInviteLink no devolvió enlace.`);
+    } else {
+      const deliveryMsg = formatVipWelcomeDeliveryMessage(subName, subPlan, inviteLink);
+      const keyboard = {
+        inline_keyboard: [
+          [{ text: "👑 Ingresar al Canal VIP (1 Solo Uso)", url: inviteLink }],
+          [{ text: "📩 Soporte", url: `https://t.me/${SUPPORT_BOT_USERNAME.replace('@', '')}` }]
+        ]
+      };
+      const sendResult = await sendRawTelegramMessage(chatId, deliveryMsg, keyboard, SUPPORT_BOT_TOKEN);
+      telegramSent = sendResult.ok;
+    }
   }
 
   res.json({
     ok: true,
     subscriber: enrichSubscriber(newSub),
     inviteLink,
+    invitePending,
     telegramSent
   });
 });
 
 app.post("/api/telegram/toggle-polling", (req, res) => {
+  // FAIL CLOSED (PRE-F00): modo comprometido → el polling no se reactiva jamás.
+  if (TELEGRAM_COMPROMISED) {
+    isPollingActive = false;
+    return res.json({ isPollingActive, failClosed: true, reason: "TELEGRAM_COMPROMISE_STATUS activo" });
+  }
   isPollingActive = !isPollingActive;
   if (isPollingActive) {
     pollSignalsBotLoop();
-    pollSupportBotLoop();
+    if (acquireTelegramPollLock("support")) pollSupportBotLoop(true);
   }
   res.json({ isPollingActive });
 });
@@ -3164,180 +3145,10 @@ const INITIAL_CARTELERA_ITEMS = [
   }
 ];
 
-const INITIAL_DAILY_AUDITS = [
-  {
-    id: 'da-20260817',
-    date: '2026-08-17',
-    dayName: 'Lunes',
-    totalPicks: 5,
-    wonPicks: 4,
-    lostPicks: 1,
-    pushPicks: 0,
-    winRate: 80.0,
-    totalUnitsStaked: 8.5,
-    netUnits: 3.42,
-    netSoles: 171.00,
-    yieldRoi: 40.2,
-    status: 'COMPLETED',
-    closingReportPublishedToTelegram: true,
-    closingReportTime: '23:05 PM',
-    picksSummaryList: [
-      '✅ Universitario -1.5 AH (+1.84u) [2-0 FINAL]',
-      '✅ Celtics -4.5 (+1.35u) [112-101 FINAL]',
-      '✅ Over 2.5 Arsenal (+1.52u) [3-1 FINAL]',
-      '❌ Dodgers ML (-1.50u) [3-4 FINAL]',
-      '✅ Djokovic 2-0 Sets (+1.21u) [6-3 6-4 FINAL]'
-    ]
-  },
-  {
-    id: 'da-20260818',
-    date: '2026-08-18',
-    dayName: 'Martes',
-    totalPicks: 6,
-    wonPicks: 5,
-    lostPicks: 1,
-    pushPicks: 0,
-    winRate: 83.3,
-    totalUnitsStaked: 10.0,
-    netUnits: 4.88,
-    netSoles: 244.00,
-    yieldRoi: 48.8,
-    status: 'COMPLETED',
-    closingReportPublishedToTelegram: true,
-    closingReportTime: '23:10 PM',
-    picksSummaryList: [
-      '✅ Real Madrid ML (+1.50u) [3-0 FINAL]',
-      '✅ Man City -1 AH (+1.76u) [2-0 FINAL]',
-      '✅ Alcaraz ML (+1.44u) [6-2 6-4 FINAL]',
-      '✅ Lakers +4.5 (+1.38u) [108-106 FINAL]',
-      '❌ Over 8.5 Astros (-1.50u) [4-2 FINAL]',
-      '✅ Topuria ML (+1.60u) [KO Round 2]'
-    ]
-  },
-  {
-    id: 'da-20260819',
-    date: '2026-08-19',
-    dayName: 'Miércoles',
-    totalPicks: 5,
-    wonPicks: 4,
-    lostPicks: 1,
-    pushPicks: 0,
-    winRate: 80.0,
-    totalUnitsStaked: 9.0,
-    netUnits: 3.65,
-    netSoles: 182.50,
-    yieldRoi: 40.5,
-    status: 'COMPLETED',
-    closingReportPublishedToTelegram: true,
-    closingReportTime: '23:08 PM',
-    picksSummaryList: [
-      '✅ Sporting Cristal -1 AH (+1.65u) [3-1 FINAL]',
-      '✅ Bayern Munich Over 2.5 (+1.40u) [4-0 FINAL]',
-      '✅ Sinner ML (+1.30u) [6-4 6-3 FINAL]',
-      '❌ Bucks -6.5 (-1.50u) [104-100 FINAL]',
-      '✅ Yankees ML (+1.80u) [6-3 FINAL]'
-    ]
-  },
-  {
-    id: 'da-20260820',
-    date: '2026-08-20',
-    dayName: 'Jueves',
-    totalPicks: 5,
-    wonPicks: 3,
-    lostPicks: 2,
-    pushPicks: 0,
-    winRate: 60.0,
-    totalUnitsStaked: 8.5,
-    netUnits: 1.15,
-    netSoles: 57.50,
-    yieldRoi: 13.5,
-    status: 'COMPLETED',
-    closingReportPublishedToTelegram: true,
-    closingReportTime: '23:12 PM',
-    picksSummaryList: [
-      '✅ Melgar ML (+1.50u) [2-1 FINAL]',
-      '❌ Djokovic ML (-2.00u) [Zverev 2-1 Sets]',
-      '✅ Warriors Over 228.5 (+1.45u) [124-118 FINAL]',
-      '❌ Mariners ML (-1.50u) [1-5 FINAL]',
-      '✅ Inter Milan -1 AH (+1.70u) [2-0 FINAL]'
-    ]
-  },
-  {
-    id: 'da-20260821',
-    date: '2026-08-21',
-    dayName: 'Viernes',
-    totalPicks: 6,
-    wonPicks: 5,
-    lostPicks: 1,
-    pushPicks: 0,
-    winRate: 83.3,
-    totalUnitsStaked: 10.5,
-    netUnits: 5.12,
-    netSoles: 256.00,
-    yieldRoi: 48.7,
-    status: 'COMPLETED',
-    closingReportPublishedToTelegram: true,
-    closingReportTime: '23:15 PM',
-    picksSummaryList: [
-      '✅ Alianza Lima -1.5 AH (+1.90u) [3-0 FINAL]',
-      '✅ Liverpool ML (+1.42u) [2-0 FINAL]',
-      '✅ Alcaraz 2-0 Sets (+1.55u) [6-3 6-2 FINAL]',
-      '✅ Nuggets -4.5 (+1.40u) [115-104 FINAL]',
-      '❌ Over 9.0 Padres (-1.50u) [3-2 FINAL]',
-      '✅ O\'Malley Over 4.5 Rounds (+1.35u) [5 Rounds Decisión]'
-    ]
-  },
-  {
-    id: 'da-20260822',
-    date: '2026-08-22',
-    dayName: 'Sábado',
-    totalPicks: 7,
-    wonPicks: 6,
-    lostPicks: 1,
-    pushPicks: 0,
-    winRate: 85.7,
-    totalUnitsStaked: 12.0,
-    netUnits: 6.45,
-    netSoles: 322.50,
-    yieldRoi: 53.7,
-    status: 'COMPLETED',
-    closingReportPublishedToTelegram: true,
-    closingReportTime: '23:30 PM',
-    picksSummaryList: [
-      '✅ Barcelona -1.5 AH (+1.85u) [4-1 FINAL]',
-      '✅ PSG Over 3.0 Goles (+1.60u) [5-0 FINAL]',
-      '✅ Celtics -7.5 (+1.45u) [120-98 FINAL]',
-      '✅ Medvedev ML (+1.50u) [6-4 7-5 FINAL]',
-      '✅ Dodgers -1.5 RL (+1.75u) [7-2 FINAL]',
-      '❌ Newcastle ML (-1.50u) [1-1 FINAL]',
-      '✅ Pereira por KO (+1.80u) [R2 KO]'
-    ]
-  },
-  {
-    id: 'da-20260823',
-    date: '2026-08-23',
-    dayName: 'Domingo',
-    totalPicks: 5,
-    wonPicks: 4,
-    lostPicks: 1,
-    pushPicks: 0,
-    winRate: 80.0,
-    totalUnitsStaked: 8.5,
-    netUnits: 3.90,
-    netSoles: 195.00,
-    yieldRoi: 45.8,
-    status: 'COMPLETED',
-    closingReportPublishedToTelegram: true,
-    closingReportTime: '23:00 PM',
-    picksSummaryList: [
-      '✅ Universitario -1.5 AH (+1.84u) [2-0 FINAL]',
-      '✅ Alcaraz ML (+1.44u) [6-4 6-3 FINAL]',
-      '✅ Celtics -5.5 (+1.35u) [110-101 FINAL]',
-      '❌ Over 8.5 Dodgers (-1.50u) [4-3 FINAL]',
-      '✅ Topuria ML (+1.60u) [Decisión Unánime]'
-    ]
-  }
-];
+// NO se seedean auditorías fabricadas: el histórico de rendimiento debe partir
+// únicamente de señales reales registradas en el ledger. Hasta la certificación
+// F01, las métricas son UNVERIFIED y se calculan de la base real.
+const INITIAL_DAILY_AUDITS = [];
 
 let masterCycleDatabaseState = {
   isActive: true,
@@ -3355,18 +3166,11 @@ let masterCycleDatabaseState = {
   },
   stage2Realtime: {
     isMonitoringActive: true,
-    totalMatchesToday: 5,
-    settledMatchesToday: 5,
+    totalMatchesToday: 0,
+    settledMatchesToday: 0,
     pendingMatchesToday: 0,
-    lastSettlementMessage: '✅ ¡PRONÓSTICO ACERTADO (+1.84 Unidades)! [Marcador Final: Universitario 2 - 0 Los Chankas]',
-    lastSettledMatch: {
-      eventTitle: 'Universitario de Deportes vs Los Chankas',
-      selection: 'Universitario -1.5 AH',
-      finalScore: '2 - 0 (FINAL)',
-      status: 'WON',
-      netUnits: 1.84,
-      settledAt: 'Hoy, 19:55 PM'
-    }
+    lastSettlementMessage: '',
+    lastSettledMatch: null
   },
   stage3CierreJornada: {
     autoTriggerWhen100Percent: true,
@@ -3376,102 +3180,68 @@ let masterCycleDatabaseState = {
     lastClosingReport: INITIAL_DAILY_AUDITS[INITIAL_DAILY_AUDITS.length - 1]
   },
   stage4HistoricalDB: {
-    totalAuditedDays: 7,
-    lifetimeNetUnits: 28.57,
-    lifetimeWinRate: 80.5,
-    lifetimeYield: 42.6,
+    totalAuditedDays: 0,
+    lifetimeNetUnits: 0,
+    lifetimeWinRate: 0,
+    lifetimeYield: 0,
     dailyAudits: INITIAL_DAILY_AUDITS,
     weeklySummary: {
-      id: 'ws-sem-34',
-      weekNumber: 34,
-      dateRange: '17 Ago 2026 - 23 Ago 2026',
-      totalDays: 7,
-      totalPicks: 39,
-      wonPicks: 31,
-      lostPicks: 8,
+      id: 'ws-pending',
+      weekNumber: 0,
+      dateRange: '',
+      totalDays: 0,
+      totalPicks: 0,
+      wonPicks: 0,
+      lostPicks: 0,
       pushPicks: 0,
-      winRate: 79.5,
-      totalUnitsStaked: 67.0,
-      netUnits: 28.57,
-      netSoles: 1428.50,
-      yieldRoi: 42.6,
-      bestDay: { day: 'Sábado (22 Ago)', netUnits: 6.45 },
+      winRate: 0,
+      totalUnitsStaked: 0,
+      netUnits: 0,
+      netSoles: 0,
+      yieldRoi: 0,
+      bestDay: null,
       dailyBreakdown: INITIAL_DAILY_AUDITS.map(d => ({
         day: d.dayName,
         date: d.date.slice(5),
         netUnits: d.netUnits,
         winRate: d.winRate
       })),
-      isSundayBroadcastPublished: true,
-      publishedAt: '23 Ago 2026, 23:45 PM'
+      status: 'UNVERIFIED',
+      isSundayBroadcastPublished: false,
+      publishedAt: ''
     },
     monthlySummary: {
-      id: 'ms-ago-2026',
-      monthName: 'Agosto 2026',
-      year: 2026,
-      totalPicks: 148,
-      wonPicks: 121,
-      lostPicks: 27,
+      id: 'ms-pending',
+      monthName: '',
+      year: 0,
+      totalPicks: 0,
+      wonPicks: 0,
+      lostPicks: 0,
       pushPicks: 0,
-      winRate: 81.8,
-      totalUnitsStaked: 245.0,
-      netUnits: 84.60,
-      netSoles: 4230.00,
-      cumulativeYieldRoi: 34.5,
-      sportBreakdown: [
-        { sport: 'football', sportName: '⚽ Fútbol (Liga 1 & UEFA)', picks: 64, winRate: 82.8, netUnits: 38.4 },
-        { sport: 'basketball', sportName: '🏀 Básquetbol NBA', picks: 32, winRate: 81.2, netUnits: 18.2 },
-        { sport: 'tennis', sportName: '🎾 Tenis ATP / WTA', picks: 24, winRate: 83.3, netUnits: 14.8 },
-        { sport: 'baseball', sportName: '⚾ Béisbol MLB', picks: 16, winRate: 75.0, netUnits: 6.2 },
-        { sport: 'mma', sportName: '🥊 UFC & Artes Marciales', picks: 12, winRate: 83.3, netUnits: 7.0 }
-      ],
-      clvPositivePercentage: 92.4,
-      isOfficialAuditPublished: true,
-      publishedAt: 'Agosto 2026'
+      winRate: 0,
+      totalUnitsStaked: 0,
+      netUnits: 0,
+      netSoles: 0,
+      cumulativeYieldRoi: 0,
+      sportBreakdown: [],
+      clvPositivePercentage: 0,
+      status: 'UNVERIFIED',
+      isOfficialAuditPublished: false,
+      publishedAt: ''
     },
     sundayAutoBroadcastEnabled: true,
     monthlyAuditAutoBroadcastEnabled: true
   },
   cycleLogs: [
     {
-      id: 'log-1',
-      timestamp: 'Hoy, 00:30:00 AM',
-      stage: 'ETAPA_1_CARTELERA_NOCTURNA',
-      stageName: 'Emisión Cartelera Nocturna',
-      title: 'Cartelera Oficial del Día Emitida en Telegram',
-      summary: 'Publicados 5 pronósticos oficiales (2 Abiertos + 3 VIP) con cuotas intactas.',
-      telegramStatus: 'SENT',
-      details: 'Canal @FijasIAOficial sincronizado con 5 disciplinas deportivas.'
-    },
-    {
-      id: 'log-2',
-      timestamp: 'Hoy, 19:55:12 PM',
-      stage: 'ETAPA_2_RESOLUCION_REALTIME',
-      stageName: 'Resolución en Tiempo Real',
-      title: 'Liquidación Inmediata: Universitario vs Los Chankas (2-0)',
-      summary: 'Pronóstico Ganado Universitario -1.5 AH (+1.84u) notificado al canal.',
-      telegramStatus: 'SENT',
-      details: 'Marcador oficial verificado. Balance auditado actualizado.'
-    },
-    {
-      id: 'log-3',
-      timestamp: 'Hoy, 23:00:00 PM',
-      stage: 'ETAPA_3_CIERRE_JORNADA',
-      stageName: 'Cierre de Jornada Automático',
-      title: 'Reporte de Cierre de Jornada (100% Finalizado)',
-      summary: 'Balance diario: 4 Acertados / 1 Fallado | Win Rate: 80.0% | +3.90u (+S/. 195.00).',
-      telegramStatus: 'SENT',
-      details: 'El 100% de los encuentros concluyó. Sello digital archivado.'
-    },
-    {
-      id: 'log-4',
-      timestamp: 'Hoy, 23:45:00 PM',
-      stage: 'ETAPA_4_RESUMENES_HISTORICOS',
-      stageName: 'Base de Datos y Resumen Semanal',
-      title: 'Auditoría Semanal Oficial Emitida (Semana #34)',
-      summary: 'Semana completa consolidada: 39 picks, 31 ganados, +28.57u (+S/. 1,428.50).',
-      telegramStatus: 'SENT',
-      details: 'Resumen dominical de 7 días auditado y publicado en Telegram.'
+      id: 'log-init',
+      timestamp: new Date().toLocaleTimeString('es-PE'),
+      stage: 'SISTEMA',
+      stageName: 'Inicialización',
+      title: 'Ciclo Autónomo en Estado UNVERIFIED',
+      summary: 'Sin señales ni liquidaciones certificadas. Las métricas se emitirán solo desde el ledger real (F01).',
+      telegramStatus: 'SIMULATED',
+      details: 'No se crean ni se muestran resultados fabricados.'
     }
   ]
 };
@@ -3680,6 +3450,14 @@ app.post("/api/master-cycle/trigger-stage-3-cierre", async (req, res) => {
 // 5. POST Trigger Stage 4: Weekly Summary (Sundays)
 app.post("/api/master-cycle/trigger-stage-4-weekly", async (req, res) => {
   const weekly = masterCycleDatabaseState.stage4HistoricalDB.weeklySummary;
+
+  if (!weekly.dailyBreakdown.length || weekly.status === 'UNVERIFIED') {
+    // FAIL CLOSED: sin datos certificados no se emiten métricas fabricadas.
+    const msg = `🗓️ <b>AUDITORÍA SEMANAL — FIJAS IA</b>\n\n⚠️ <code>PERFORMANCE_STATUS=UNVERIFIED</code>\nNo hay auditorías certificadas para publicar. Las métricas semanales se emitirán únicamente cuando el ledger de señales cuente con datos reales auditados (F01).`;
+    const sendRes = await sendRawTelegramMessage(PUBLIC_CHANNEL, msg, undefined, SIGNALS_BOT_TOKEN);
+    return res.json({ ok: false, telegramSent: sendRes.ok, reason: 'UNVERIFIED_NO_DATA', weekly, state: masterCycleDatabaseState });
+  }
+
   const sign = weekly.netUnits >= 0 ? '+' : '';
   const solesSign = weekly.netSoles >= 0 ? '+S/.' : '-S/.';
 
@@ -3720,6 +3498,14 @@ app.post("/api/master-cycle/trigger-stage-4-weekly", async (req, res) => {
 // 6. POST Trigger Stage 4: Monthly Audit (30-Day Sum with Yield %)
 app.post("/api/master-cycle/trigger-stage-4-monthly", async (req, res) => {
   const monthly = masterCycleDatabaseState.stage4HistoricalDB.monthlySummary;
+
+  if (monthly.status === 'UNVERIFIED' || monthly.totalPicks === 0) {
+    // FAIL CLOSED: sin datos certificados no se emiten métricas fabricadas.
+    const msg = `🏛️ <b>AUDITORÍA MENSUAL — FIJAS IA</b>\n\n⚠️ <code>PERFORMANCE_STATUS=UNVERIFIED</code>\nNo hay auditorías certificadas para publicar. Las métricas mensuales se emitirán únicamente cuando el ledger de señales cuente con datos reales auditados (F01).`;
+    const sendRes = await sendRawTelegramMessage(PUBLIC_CHANNEL, msg, undefined, SIGNALS_BOT_TOKEN);
+    return res.json({ ok: false, telegramSent: sendRes.ok, reason: 'UNVERIFIED_NO_DATA', monthly, state: masterCycleDatabaseState });
+  }
+
   const sign = monthly.netUnits >= 0 ? '+' : '';
   const solesSign = monthly.netSoles >= 0 ? '+S/.' : '-S/.';
 

@@ -622,102 +622,54 @@ export default function App() {
     let newLog: AutoPilotLog;
     let telegramTextToSend = '';
 
-    if (type === 'morning_scan' || type === 'morning_free_pick') {
-      const topPick = evSignals[0] || EV_SIGNALS_LIST[0];
-      telegramTextToSend = formatSingleSignalMessage(topPick, true);
+    // PRE-F00 FAIL CLOSED: los disparadores no emiten pronósticos ni métricas
+    // fabricadas; el contenido cuantitativo se publica sólo con el pipeline (F00).
+    const failClosedMsg = `🔒 <b>FAIL CLOSED (PRE-F00)</b>
 
+No se emiten pronósticos, liquidaciones ni métricas cuantitativas sin datos verificados por el pipeline certificado (F00).
+
+👑 <i>Canal VIP & Soporte: <a href="https://t.me/SoporteFijasIA_bot">@SoporteFijasIA_bot</a></i>`;
+    telegramTextToSend = failClosedMsg;
+
+    if (type === 'morning_scan' || type === 'morning_free_pick') {
       newLog = {
         id: `log-${Date.now()}`,
         timestamp: timeString,
         type: 'morning_scan',
-        title: '🎁 Disparador 09:00 AM: 1 Pick Gratuito Destacado',
-        message: telegramTextToSend.replace(/<[^>]*>?/gm, ''),
+        title: '🎁 Disparador 09:00 AM — FAIL CLOSED (sin pronóstico verificado)',
+        message: failClosedMsg,
         telegramStatus: 'SENT',
-        metrics: { picksCount: 1, winRate: 68.4 }
+        metrics: { picksCount: 0 }
       };
     } else if (type === 'golden_parlay_vip') {
-      const sampleParlay: GoldenParlay = {
-        id: `parlay-${Date.now()}`,
-        title: 'Combinada de Oro del Día',
-        legs: [
-          {
-            id: 'leg-1',
-            matchTitle: 'Universitario vs Los Chankas',
-            tournament: 'Liga 1 Perú',
-            selection: 'Universitario -1.5 AH',
-            odds: 1.92,
-            confidence: 86.4
-          },
-          {
-            id: 'leg-2',
-            matchTitle: 'Sporting Cristal vs Sport Huancayo',
-            tournament: 'Liga 1 Perú',
-            selection: 'Cristal Gana + Más 1.5 Goles',
-            odds: 1.65,
-            confidence: 84.1
-          }
-        ],
-        totalOdds: 3.17,
-        recommendedStakeUnits: 1.0,
-        jointModelProb: 55.4,
-        status: 'pending',
-        createdAt: timeString
-      };
-
-      telegramTextToSend = formatGoldenParlayMessage(sampleParlay);
-
       newLog = {
         id: `log-${Date.now()}`,
         timestamp: timeString,
         type: 'golden_parlay_vip',
-        title: '🔥 Disparador 10:00 AM: Combinada de Oro VIP (@3.17)',
-        message: telegramTextToSend.replace(/<[^>]*>?/gm, ''),
+        title: '🔥 Disparador 10:00 AM — FAIL CLOSED (combinada sin verificar)',
+        message: failClosedMsg,
         telegramStatus: 'SENT',
-        metrics: { totalOdds: 3.17, legsCount: 2 }
+        metrics: { totalOdds: 0, legsCount: 0 }
       };
     } else if (type === 'live_settlement') {
-      const winAmount = (bankrollSettings.unitValueSoles * 2.2).toFixed(2);
-      telegramTextToSend = formatSettlementMessage(
-        'Alianza Lima vs Cienciano',
-        'Alianza Lima Gana a Cero',
-        2.10,
-        true,
-        2.20,
-        '2 - 0 (FINAL)'
-      );
-
       newLog = {
         id: `log-${Date.now()}`,
         timestamp: timeString,
         type: 'live_settlement',
-        title: '✅ Disparador Post-Partido: Liquidación Oficial (Ganada)',
-        message: telegramTextToSend.replace(/<[^>]*>?/gm, ''),
+        title: '✅ Disparador Post-Partido — FAIL CLOSED (settlement sin verificar)',
+        message: failClosedMsg,
         telegramStatus: 'SENT',
-        metrics: { result: 'GANADA', settledMatch: 'Alianza Lima vs Cienciano' }
+        metrics: { result: 'PUSH', settledMatch: 'PENDIENTE' }
       };
     } else if (type === 'nightly_audit') {
-      const netGain = bankrollSettings.unitValueSoles * 5.68;
-      const finalBank = bankrollSettings.totalBankrollSoles + netGain;
-
-      telegramTextToSend = formatNightlyAuditMessage(
-        6,
-        5,
-        1,
-        83.3,
-        28.4,
-        5.68,
-        netGain,
-        finalBank
-      );
-
       newLog = {
         id: `log-${Date.now()}`,
         timestamp: timeString,
         type: 'nightly_audit',
-        title: '📊 Reporte Nocturno de Balance Diario Auditado (23:00 PM)',
-        message: telegramTextToSend.replace(/<[^>]*>?/gm, ''),
+        title: '📊 Cierre Diario — FAIL CLOSED (metadística sin certificar)',
+        message: failClosedMsg,
         telegramStatus: 'SENT',
-        metrics: { unitsWon: 5.68, winRate: 83.3 }
+        metrics: { unitsWon: 0, winRate: 0 }
       };
     } else {
       telegramTextToSend = formatVIPPlansBroadcastMessage(DEFAULT_VIP_PLANS, DEFAULT_PAYMENT_SETTINGS);

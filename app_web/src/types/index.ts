@@ -183,14 +183,17 @@ export interface Match {
   status: 'SCHEDULED' | 'LIVE' | 'FINISHED';
   liveMinute?: number;
   liveScore?: { home: number; away: number; periodInfo?: string };
-  odds: MatchOdds;
-  probabilities: CalibratedProbabilities;
-  h2h: H2HRecord[];
-  form: {
+  // PRE-F00 FAIL CLOSED: los campos analíticos (odds, probabilities, h2h,
+  // form, statsComparison) son opcionales y sólo se publican cuando existen
+  // datos verificados del pipeline cuantitativo (F00).
+  odds?: MatchOdds;
+  probabilities?: CalibratedProbabilities;
+  h2h?: H2HRecord[];
+  form?: {
     home: ('W' | 'D' | 'L')[];
     away: ('W' | 'D' | 'L')[];
   };
-  statsComparison: {
+  statsComparison?: {
     homeXG: number;
     awayXG: number;
     homePossession: number;

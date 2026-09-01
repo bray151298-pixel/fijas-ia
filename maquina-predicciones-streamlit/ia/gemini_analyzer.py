@@ -188,10 +188,14 @@ INSTRUCCION:
 
 def _analizar_con_omniroute(prompt: str) -> dict[str, Any]:
     """Llama a OmniRoute / OpenAI compatible endpoint."""
+    import os
     import requests
-    base_url = st.secrets.get("OMNIROUTE_BASE_URL", "http://localhost:20128/v1").rstrip("/")
-    api_key = st.secrets.get("OMNIROUTE_API_KEY", "sk-omniroute")
-    model = st.secrets.get("OMNIROUTE_MODEL", "deepseek-chat")
+    base_url = st.secrets.get("OMNIROUTE_BASE_URL", os.environ.get("OMNIROUTE_BASE_URL", "")).rstrip("/")
+    api_key = st.secrets.get("OMNIROUTE_API_KEY", os.environ.get("OMNIROUTE_API_KEY", ""))
+    model = st.secrets.get("OMNIROUTE_MODEL", os.environ.get("OMNIROUTE_MODEL", "deepseek-chat"))
+
+    if not base_url or not api_key:
+        raise RuntimeError("OMNIROUTE_BASE_URL/API_KEY no configurados. FAIL CLOSED.")
 
     url = f"{base_url}/chat/completions"
     headers = {

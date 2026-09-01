@@ -2,80 +2,37 @@ import os
 # -*- coding: utf-8 -*-
 import asyncio
 import logging
-import httpx
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 logger = logging.getLogger('AutoSettler')
 
-MAIN_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', os.getenv('MAIN_BOT_TOKEN', ''))
-PUBLIC_CHANNEL = '@FijasIAOficial'
-VIP_CHANNEL_ID = '-1004358917232'
-BASE_URL = f'https://api.telegram.org/bot{MAIN_BOT_TOKEN}'
+# FAIL CLOSED (PRE-F00):
+# Este worker NO emite liquidaciones ni promociones públicas.
+# Un settlement requiere una señal REAL registrada en el ledger (señal emitida +
+# resultado verificado desde el provider) y la auditoría del Motor Cuantitativo F00.
+# Cualquier resultado hardcodeado o promoción de "señal ganada" fabricada queda prohibido.
 
-TRACKED_BETS = {
-    'atalanta_sassuolo': {
-        'match': 'Atalanta vs Sassuolo',
-        'league': 'Serie A (Italia)',
-        'pick': 'Atalanta Ganador Directo + Over 1.5',
-        'odds': 1.62,
-        'stake': 2.0,
-        'channel': VIP_CHANNEL_ID,
-        'settled': False,
-        'result': {'home': 2, 'away': 1, 'winner': 'home', 'total_goals': 3}
-    }
-}
+# Verification requerida (no implementada en PRE-F00):
+#  1. signal_id real con published_at_utc != null (ledger auditable).
+#  2. Resultado real verificado contra provider (ESPN/Sportradar/otro) con timestamp.
+#  3. Liquidación idempotente (una sola vez por señal) y registrada en DB.
+#  4. NUNCA publicidad de "otra señal ganada" basada en datos no registrados.
 
-async def send_telegram(client, chat_id, text):
-    try:
-        r = await client.post(f'{BASE_URL}/sendMessage', json={
-            'chat_id': chat_id,
-            'text': text,
-            'parse_mode': 'HTML'
-        }, timeout=10.0)
-        return r.json()
-    except Exception as e:
-        logger.error(f'Error Telegram: {e}')
-        return None
-
-async def settle_match(client, bet_id, bet_info, result):
-    profit = round(bet_info['stake'] * (bet_info['odds'] - 1), 2)
-    
-    report_vip = (
-        '✅ *¡PRONÓSTICO OFICIAL ACERTADO! — RESULTADO FINAL* 🎯💰\n'
-        '━━━━━━━━━━━━━━━━━━━━━\n'
-        f'🏆 *{bet_info["league"]}*\n'
-        f'⚽ *{bet_info["match"]}*\n'
-        f'📊 *Marcador Oficial:* **{result["home"]} - {result["away"]}** (Finalizado)\n'
-        '━━━━━━━━━━━━━━━━━━━━━\n'
-        f'👉 *Pronóstico VIP:* {bet_info["pick"]}\n'
-        f'📈 *Cuota:* @{bet_info["odds"]} | 💰 *Stake:* {bet_info["stake"]}u\n'
-        f'💵 *Beneficio Neto:* *+{profit} Unidades* (ROI +62%)\n'
-        '━━━━━━━━━━━━━━━━━━━━━\n'
-        '🤖 *Validado y liquidado automáticamente por FIJAS IA Quantum-7™.*\n'
-        '👑 Soporte & Renovaciones: @SoporteFijasIA_bot'
-    )
-    
-    await send_telegram(client, bet_info['channel'], report_vip)
-    
-    # Enviar al canal público para captar clientes
-    promo_public = (
-        '🔥 *¡OTRA SEÑAL GANADA EN EL CANAL VIP!* 🟢💰\n'
-        '━━━━━━━━━━━━━━━━━━━━━\n'
-        f'⚽ *{bet_info["match"]}* (Serie A)\n'
-        f'📊 *Marcador:* {result["home"]} - {result["away"]} (Finalizado)\n'
-        f'✅ *Jugada VIP:* **{bet_info["pick"]}** (@{bet_info["odds"]}) 🟢\n'
-        f'💵 *Retorno:* *+{profit}u* de ganancia neta\n'
-        '━━━━━━━━━━━━━━━━━━━━━\n'
-        '👉 *¿Quieres todas las señales en vivo y antes de que arranquen?*\n'
-        '👑 Únete al VIP aquí: @SoporteFijasIA_bot'
-    )
-    await send_telegram(client, PUBLIC_CHANNEL, promo_public)
-    bet_info['settled'] = True
-    logger.info(f'Liquidacion emitida para {bet_info["match"]}')
+def _fail_closed_guard() -> bool:
+    if os.getenv('AUTO_SETTLEMENT_ENABLED', '') == 'true':
+        logger.error(
+            'AUTO_SETTLEMENT_ENABLED=true en PRE-F00 sin Motor Cuantitativo certificado. '
+            'Emisión de settlements bloqueada (FAIL CLOSED).'
+        )
+        return False
+    logger.info('auto_settlement_worker: FAIL CLOSED (PRE-F00) — no se emiten liquidaciones '
+                'sin señal real verificada en el ledger F00.')
+    return False
 
 async def main():
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        await settle_match(client, 'atalanta_sassuolo', TRACKED_BETS['atalanta_sassuolo'], TRACKED_BETS['atalanta_sassuolo']['result'])
+    run = _fail_closed_guard()
+    if not run:
+        return
 
 if __name__ == '__main__':
     asyncio.run(main())

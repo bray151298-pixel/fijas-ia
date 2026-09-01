@@ -4,6 +4,10 @@ import asyncio
 import logging
 import httpx
 
+from backend.app.core.single_instance import (
+    acquire_poll_lock, release_poll_lock, telegram_compromised,
+)
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 logger = logging.getLogger('SalesBot')
 
@@ -73,7 +77,7 @@ async def create_vip_invite_link(client):
             return res['result']['invite_link']
     except Exception as e:
         logger.error(f'Error link: {e}')
-    return 'https://t.me/+FijasIA_VIP_Acceso'
+    return ''  # FAIL CLOSED: no se devuelve enlace estático/ficticio
 
 async def generate_gemini_reply(user_text):
     try:
@@ -157,31 +161,41 @@ async def process_update(client, update):
 
 async def run_bot():
     logger.info('Iniciando Agente Automático de Soporte @SoporteFijasIA_bot...')
+    # FAIL CLOSED (PRE-F00): modo comprometido o duplicado → no tocar el bot.
+    if telegram_compromised():
+        logger.error('TELEGRAM_COMPROMISE_STATUS activo → FAIL CLOSED: soporte NO arranca.')
+        return
+    if not acquire_poll_lock('support'):
+        logger.error('Polling de soporte ya lo tiene otro proceso (single-instance) → SKIP.')
+        return
     offset = None
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        r = await client.get(f'{BASE_URL}/getMe')
-        if r.status_code != 200:
-            logger.error(f'Error getMe: {r.text}')
-            return
-        bot_name = r.json().get('result', {}).get('username', 'SoporteBot')
-        logger.info(f'Bot activo: @{bot_name}')
-        while True:
-            try:
-                params = {'timeout': 20}
-                if offset is not None:
-                    params['offset'] = offset
-                resp = await client.get(f'{BASE_URL}/getUpdates', params=params, timeout=25.0)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    if data.get('ok'):
-                        for update in data.get('result', []):
-                            offset = update['update_id'] + 1
-                            await process_update(client, update)
-                else:
-                    await asyncio.sleep(2)
-            except Exception as e:
-                logger.error(f'Polling error: {e}')
-                await asyncio.sleep(3)
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            r = await client.get(f'{BASE_URL}/getMe')
+            if r.status_code != 200:
+                logger.error(f'Error getMe: {r.text}')
+                return
+            bot_name = r.json().get('result', {}).get('username', 'SoporteBot')
+            logger.info(f'Bot activo: @{bot_name}')
+            while True:
+                try:
+                    params = {'timeout': 20}
+                    if offset is not None:
+                        params['offset'] = offset
+                    resp = await client.get(f'{BASE_URL}/getUpdates', params=params, timeout=25.0)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        if data.get('ok'):
+                            for update in data.get('result', []):
+                                offset = update['update_id'] + 1
+                                await process_update(client, update)
+                    else:
+                        await asyncio.sleep(2)
+                except Exception as e:
+                    logger.error(f'Polling error: {e}')
+                    await asyncio.sleep(3)
+    finally:
+        release_poll_lock('support')
 
 if __name__ == '__main__':
     asyncio.run(run_bot())

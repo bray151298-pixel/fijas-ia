@@ -46,8 +46,11 @@ export async function generateSingleUseVIPInvite(
       return { inviteLink: data.result.invite_link, isFallback: false };
     }
   } catch (err) {
-    console.warn('[InviteManager] Fallback invite link used:', err);
+    console.warn('[InviteManager] createChatInviteLink failed:', err);
   }
 
-  return { inviteLink: 'https://t.me/+jMKV8QQI2VhiZTVh', isFallback: true };
+  // FAIL CLOSED: nunca se devuelve un enlace estático/inventado.
+  // El flujo de aprobación debe fallar con enlace vacío para que el operador
+  // actúe manualmente (sin invitar a nadie por un enlace de respaldo no controlado).
+  return { inviteLink: '', isFallback: true };
 }

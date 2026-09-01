@@ -36,10 +36,13 @@ def run(start: str, end: str, initial: float = 1000.0, session: Session = Depend
     predictor = Predictor()
     predictor.load()
     res = run_backtest(df, predictor, s, e, initial_bankroll=initial)
+    # FAIL CLOSED (PRE-F00): sin Battery Cuantitativo F00 los resultados API no son
+    # métricas certificadas. Se exponen SIEMPRE con su estado de verificación.
     return {
         "initial": res.initial, "final": res.final, "pnl": res.pnl,
         "bets": res.bets, "won": res.won, "lost": res.lost,
         "roi": res.roi, "winrate": res.winrate,
         "max_drawdown": res.max_drawdown, "peak": res.peak, "sharpe": res.sharpe,
+        "verification": res.verification,
         "curve": [(t.isoformat(), bk) for t, bk in res.bankroll_curve[-200:]],  # últimos 200 puntos
     }

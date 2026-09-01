@@ -172,179 +172,19 @@ export function formatToLimaTime(isoDateStr: string): { fullDisplay: string; tim
 }
 
 /**
- * Genera el análisis cuantitativo y selección +EV para un partido programado real
+ * Genera el análisis cuantitativo y selección +EV para un partido programado real.
+ *
+ * PRE-F00 FAIL CLOSED: los pronósticos cuantitativos (probabilidad, edge, stake,
+ * cuota justa) se generarán únicamente con el Motor Cuantitativo certificado (F00).
+ * Hasta entonces NO se inventan picks: devuelve null para todos los partidos.
  */
 function buildQuantitativePrediction(
   homeTeam: string,
   awayTeam: string,
   league: string,
   sport: string
-): NonNullable<ESPNScheduledMatch['recommendedPick']> {
-  const normHome = homeTeam.toLowerCase();
-  const normAway = awayTeam.toLowerCase();
-
-  // 1. Universitario vs Los Chankas (Liga 1)
-  if (normHome.includes('universitario') || normAway.includes('universitario')) {
-    return {
-      market: 'Hándicap Asiático',
-      selection: 'Universitario -1.5 AH (Gana por 2 o más goles)',
-      odds: 1.92,
-      fairOdds: 1.68,
-      modelProb: 76.5,
-      edge: 13.6,
-      stakeUnits: 2.0,
-      isVIP: false,
-      analysis: 'Universitario registra 2.45 xG promedio en el Monumental y 14 triunfos consecutivos. Los Chankas conceden 1.8 goles de visita con bajas defensivas críticas.'
-    };
-  }
-
-  // 2. Melgar vs Alianza Lima (Liga 1)
-  if ((normHome.includes('melgar') && normAway.includes('alianza')) || (normHome.includes('alianza') && normAway.includes('melgar'))) {
-    return {
-      market: 'Doble Oportunidad & Goles',
-      selection: 'Melgar Gana o Empata (1X) y Más de 1.5 Goles',
-      odds: 1.70,
-      fairOdds: 1.54,
-      modelProb: 73.0,
-      edge: 11.2,
-      stakeUnits: 2.0,
-      isVIP: true,
-      analysis: 'Melgar aprovecha los 2,335 m.s.n.m. de Arequipa (UNSA) donde promedia 2.15 xG; Alianza llega con dosificación tras fixture apretado.'
-    };
-  }
-
-  // 3. Elche vs Barcelona (La Liga)
-  if (normHome.includes('barcelona') || normAway.includes('barcelona')) {
-    return {
-      market: 'Resultado & Goles',
-      selection: 'Barcelona Gana y Más de 1.5 Goles Totales',
-      odds: 1.58,
-      fairOdds: 1.41,
-      modelProb: 78.0,
-      edge: 12.4,
-      stakeUnits: 2.0,
-      isVIP: false,
-      analysis: 'Barcelona genera un xG de 2.70 en sus últimas salidas con 68% de posesión dominante; Elche sufre en repliegue ante transiciones veloces.'
-    };
-  }
-
-  // 4. Atalanta vs Sassuolo (Serie A)
-  if (normHome.includes('atalanta') || normAway.includes('atalanta')) {
-    return {
-      market: 'Línea de Dinero (1X2)',
-      selection: 'Atalanta Ganador Directo + Over 1.5',
-      odds: 1.62,
-      fairOdds: 1.46,
-      modelProb: 75.5,
-      edge: 11.0,
-      stakeUnits: 2.0,
-      isVIP: true,
-      analysis: 'Atalanta supera los 2.30 xG como local y mantiene un bloque de presión alta con 84% de recuperación en campo rival.'
-    };
-  }
-
-  // 5. Torino vs AC Milan (Serie A)
-  if (normHome.includes('milan') || normAway.includes('milan')) {
-    return {
-      market: 'Empate No Acción / Moneyline',
-      selection: 'AC Milan Ganador (DNB / 1X2)',
-      odds: 1.85,
-      fairOdds: 1.66,
-      modelProb: 65.0,
-      edge: 11.5,
-      stakeUnits: 1.5,
-      isVIP: false,
-      analysis: 'Milan promedia 1.95 xG y efectividad del 78% en contragolpes ante la estructura defensiva de Torino.'
-    };
-  }
-
-  // 6. River Plate vs Vélez Sarsfield (Argentina)
-  if (normHome.includes('river') || normAway.includes('river')) {
-    return {
-      market: 'Línea de Dinero (1X2)',
-      selection: 'River Plate Ganador Directo',
-      odds: 1.65,
-      fairOdds: 1.49,
-      modelProb: 74.0,
-      edge: 10.8,
-      stakeUnits: 2.0,
-      isVIP: true,
-      analysis: 'El Más Monumental presenta un diferencial de posesión de +24% a favor de River y un xG permitido inferior a 0.70 por encuentro.'
-    };
-  }
-
-  // 7. Racing Club vs Boca Juniors (Argentina)
-  if ((normHome.includes('boca') && normAway.includes('racing')) || (normHome.includes('racing') && normAway.includes('boca'))) {
-    return {
-      market: 'Total Goles & Tarjetas',
-      selection: 'Menos de 2.5 Goles Totales (Under)',
-      odds: 1.60,
-      fairOdds: 1.45,
-      modelProb: 72.0,
-      edge: 10.2,
-      stakeUnits: 1.5,
-      isVIP: true,
-      analysis: 'Clásico de máxima intensidad táctica con xG conjunto proyectado de 1.65 y juego cortado en medio campo.'
-    };
-  }
-
-  // 8. Palmeiras vs Vasco da Gama (Brasil)
-  if (normHome.includes('palmeiras') || normAway.includes('palmeiras')) {
-    return {
-      market: 'Línea de Dinero',
-      selection: 'Palmeiras Ganador Directo',
-      odds: 1.52,
-      fairOdds: 1.38,
-      modelProb: 79.0,
-      edge: 10.5,
-      stakeUnits: 2.0,
-      isVIP: true,
-      analysis: 'Palmeiras invicto en el Allianz Parque con 11 triunfos en sus últimos 13 cotejos de local.'
-    };
-  }
-
-  // 9. MLB: Dodgers vs Pirates
-  if (normHome.includes('dodgers') || normAway.includes('dodgers')) {
-    return {
-      market: 'Moneyline / Run Line',
-      selection: 'Los Angeles Dodgers Ganador (Moneyline)',
-      odds: 1.55,
-      fairOdds: 1.40,
-      modelProb: 75.0,
-      edge: 10.7,
-      stakeUnits: 2.0,
-      isVIP: true,
-      analysis: 'Lanzador abridor con ERA de 2.85 y wOBA ofensivo de Dodgers de .348 frente a diestros.'
-    };
-  }
-
-  // 10. WNBA: Chicago Sky vs Indiana Fever
-  if (normHome.includes('fever') || normAway.includes('fever') || normHome.includes('sky') || normAway.includes('sky')) {
-    return {
-      market: 'Puntos Totales / Spread',
-      selection: 'Indiana Fever -4.5 Puntos / Más de 168.5 Puntos',
-      odds: 1.90,
-      fairOdds: 1.70,
-      modelProb: 60.5,
-      edge: 11.8,
-      stakeUnits: 1.5,
-      isVIP: true,
-      analysis: 'Ritmo ofensivo acelerado (Pace > 82.5 posesiones) con alta efectividad perimetral de Caitlin Clark.'
-    };
-  }
-
-  // Generic Default quantitative pick for other real matches
-  return {
-    market: 'Línea de Dinero / Doble Oportunidad',
-    selection: `${homeTeam} Ganador o Empate (1X)`,
-    odds: 1.60,
-    fairOdds: 1.45,
-    modelProb: 71.5,
-    edge: 9.8,
-    stakeUnits: 1.5,
-    isVIP: false,
-    analysis: `Modelo cuantitativo proyecta un +EV del +9.8% a favor de ${homeTeam} basado en factor localía y métricas de xG recientes.`
-  };
+): ESPNScheduledMatch['recommendedPick'] {
+  return null; // FAIL CLOSED: sin pronóstico cuantitativo verificado (F00)
 }
 
 /**
@@ -443,14 +283,10 @@ export async function fetchLiveESPNFutureMatches(): Promise<{
   // Ordenar por hora de inicio cronológica (más próximo primero)
   scheduledList.sort((a, b) => a.kickoffTimestamp - b.kickoffTimestamp);
 
-  // Separar en pronósticos Gratuitos (abiertos) y VIP (+EV de élite)
-  const freePicks = scheduledList.filter(m => !m.recommendedPick?.isVIP);
+  // Separar en pronósticos Gratuitos (abiertos) y VIP (+EV de élite).
+  // FAIL CLOSED: sólo se consideran picks reales del pipeline cuantitativo (F00).
+  const freePicks = scheduledList.filter(m => m.recommendedPick && !m.recommendedPick.isVIP);
   const vipPicks = scheduledList.filter(m => m.recommendedPick?.isVIP);
-
-  // Si no hay suficientes free picks, asignar los primeros 3 abiertos
-  if (freePicks.length === 0 && scheduledList.length > 0) {
-    freePicks.push(...scheduledList.slice(0, 3));
-  }
 
   const nowLimaStr = new Date().toLocaleTimeString('es-PE', {
     timeZone: 'America/Lima',
@@ -462,7 +298,7 @@ export async function fetchLiveESPNFutureMatches(): Promise<{
   return {
     allScheduled: scheduledList,
     freePicks: freePicks.slice(0, 4),
-    vipPicks: vipPicks.length > 0 ? vipPicks : scheduledList.slice(2, 8),
+    vipPicks: vipPicks.slice(0, 8),
     lastUpdated: `Hoy, ${nowLimaStr} (Hora Lima)`
   };
 }
@@ -501,46 +337,40 @@ export function convertESPNToAppMatches(espnMatches: ESPNScheduledMatch[]): {
   const matches: import('../types').Match[] = [];
   const signals: import('../types').EVSignal[] = [];
 
-  espnMatches.forEach((em, idx) => {
+  // FAIL CLOSED (PRE-F00): los campos analíticos (odds, probabilidades, h2h,
+  // form, stats y evSignal) sólo se publican cuando provienen del pipeline
+  // cuantitativo verificado (F00). Hasta entonces se omiten: nada inventado.
+  espnMatches.forEach((em) => {
     const lgId = leagueIdMap[em.leagueId] || 'liga1-peru';
     const flag = leagueFlagMap[em.leagueId] || '🏆';
-    const pick = em.recommendedPick;
+    const pick = em.recommendedPick; // FAIL CLOSED: null hasta F00
 
-    const oddsHome = Number((1.50 + (idx % 4) * 0.15).toFixed(2));
-    const oddsDraw = em.sport === 'football' ? 3.40 : undefined;
-    const oddsAway = Number((2.40 + (idx % 3) * 0.30).toFixed(2));
-    const modelProb = pick ? pick.modelProb : 70;
-
-    const signalId = `ev-live-${em.id}`;
-    const evSignal: import('../types').EVSignal | undefined = pick ? {
-      id: signalId,
-      sport: em.sport,
-      matchId: em.id,
-      matchTitle: `${em.homeTeam} vs ${em.awayTeam}`,
-      league: em.league,
-      market: pick.market,
-      selection: pick.selection,
-      plainMarket: pick.market,
-      plainSelection: pick.selection,
-      odds: pick.odds,
-      fairOdds: pick.fairOdds,
-      modelProb: pick.modelProb,
-      impliedProb: Number(((1 / pick.odds) * 100).toFixed(1)),
-      edge: pick.edge,
-      stake: pick.stakeUnits >= 2 ? '+2.0u' : '+1.5u',
-      confidence: Math.round(pick.modelProb * 1.2 > 95 ? 95 : pick.modelProb * 1.2),
-      urgency: 'ALTA',
-      rationale: pick.analysis,
-      tacticalReason: pick.analysis,
-      injuriesContext: 'Formación confirmada y métricas de xG actualizadas en vivo.',
-      timeToKickoff: em.kickoffLima,
-      apuestaTotalMarketCode: `AT-${em.id.slice(0, 6)}`,
-      apuestaTotalDeepLink: 'https://www.apuestatotal.com/apuestas-deportivas/',
-      apuestaTotalSpecialBoost: pick.isVIP
-    } : undefined;
-
-    if (evSignal) {
-      signals.push(evSignal);
+    if (pick) {
+      signals.push({
+        id: `ev-live-${em.id}`,
+        sport: em.sport,
+        matchId: em.id,
+        matchTitle: `${em.homeTeam} vs ${em.awayTeam}`,
+        league: em.league,
+        market: pick.market,
+        selection: pick.selection,
+        plainMarket: pick.market,
+        plainSelection: pick.selection,
+        odds: pick.odds,
+        fairOdds: pick.fairOdds,
+        modelProb: pick.modelProb,
+        impliedProb: Number(((1 / pick.odds) * 100).toFixed(1)),
+        edge: pick.edge,
+        stake: pick.stakeUnits >= 2 ? '+2.0u' : '+1.5u',
+        confidence: Math.round(pick.modelProb * 1.2 > 95 ? 95 : pick.modelProb * 1.2),
+        urgency: 'ALTA',
+        rationale: pick.analysis,
+        tacticalReason: pick.analysis,
+        timeToKickoff: em.kickoffLima,
+        apuestaTotalMarketCode: `AT-${em.id.slice(0, 6)}`,
+        apuestaTotalDeepLink: 'https://www.apuestatotal.com/apuestas-deportivas/',
+        apuestaTotalSpecialBoost: pick.isVIP
+      });
     }
 
     matches.push({
@@ -559,54 +389,31 @@ export function convertESPNToAppMatches(espnMatches: ESPNScheduledMatch[]): {
       city: 'Sede Oficial',
       status: em.statusState === 'post' ? 'FINISHED' : (em.statusState === 'in' ? 'LIVE' : 'SCHEDULED'),
       liveScore: em.liveScore,
-      odds: {
-        home: oddsHome,
-        draw: oddsDraw,
-        away: oddsAway,
-        over25: 1.82,
-        under25: 1.98,
-        bttsYes: 1.75,
-        bttsNo: 2.05
-      },
-      probabilities: {
-        home: modelProb,
-        draw: oddsDraw ? 20 : 0,
-        away: Math.max(10, 100 - modelProb - (oddsDraw ? 20 : 0)),
-        over25: 64,
-        bttsYes: 58
-      },
-      h2h: [
-        {
-          date: 'Reciente',
-          homeTeam: em.homeTeam,
-          awayTeam: em.awayTeam,
-          score: '2 - 1',
-          winner: 'home',
-          competition: em.league
-        }
-      ],
-      form: {
-        home: ['W', 'W', 'D', 'W', 'W'],
-        away: ['L', 'W', 'D', 'L', 'W']
-      },
-      statsComparison: {
-        homeXG: 2.15,
-        awayXG: 0.95,
-        homePossession: 61,
-        awayPossession: 39,
-        homeShotsOnTarget: 7,
-        awayShotsOnTarget: 3
-      },
-      absences: [
-        {
-          team: em.awayTeam,
-          player: 'Defensa / Titular',
-          position: 'Defensa',
-          reason: 'Baja reportada por sobrecarga muscular',
-          impactLevel: 'alto'
-        }
-      ],
-      evSignal
+      evSignal: pick ? {
+        id: `ev-live-${em.id}`,
+        sport: em.sport,
+        matchId: em.id,
+        matchTitle: `${em.homeTeam} vs ${em.awayTeam}`,
+        league: em.league,
+        market: pick.market,
+        selection: pick.selection,
+        plainMarket: pick.market,
+        plainSelection: pick.selection,
+        odds: pick.odds,
+        fairOdds: pick.fairOdds,
+        modelProb: pick.modelProb,
+        impliedProb: Number(((1 / pick.odds) * 100).toFixed(1)),
+        edge: pick.edge,
+        stake: pick.stakeUnits >= 2 ? '+2.0u' : '+1.5u',
+        confidence: Math.round(pick.modelProb * 1.2 > 95 ? 95 : pick.modelProb * 1.2),
+        urgency: 'ALTA',
+        rationale: pick.analysis,
+        tacticalReason: pick.analysis,
+        timeToKickoff: em.kickoffLima,
+        apuestaTotalMarketCode: `AT-${em.id.slice(0, 6)}`,
+        apuestaTotalDeepLink: 'https://www.apuestatotal.com/apuestas-deportivas/',
+        apuestaTotalSpecialBoost: pick.isVIP
+      } : undefined
     });
   });
 

@@ -63,50 +63,35 @@ export async function requestMatchAnalysis(
       source: data.source || (engineConfig.mode === 'gemini' ? 'Motor Neural de Inteligencia Deportiva' : 'Gateway Cuantitativo Privado FIJAS IA')
     };
   } catch (error: any) {
-    console.warn('API error, building local quantitative synthesis:', error);
-    
-    // Intelligent quantitative fallback synthesis
-    const homeProb = match.probabilities.home;
-    const overProb = match.probabilities.over25;
-    const bttsProb = match.probabilities.bttsYes;
-    const isHomeFav = homeProb >= 50;
-    
+    console.warn('API error, analysis unavailable:', error);
+
+    // PRE-F00 FAIL CLOSED: sin síntesis cuantitativa inventada. El análisis
+    // cuantitativo verificable sólo se emite desde el pipeline certificado (F00).
     const fallbackReport: TacticalAIReport = {
-      tacticalOverview: `${match.homeTeam} muestra una superioridad en xG de ${(match.statsComparison.homeXG).toFixed(2)} vs ${(match.statsComparison.awayXG).toFixed(2)} de ${match.awayTeam}. La Tecnología Predictiva Exclusiva proyecta un ritmo ${overProb > 55 ? 'abierto con alta probabilidad de goles' : 'táctico y cerrado con dominio territorial'}.`,
+      tacticalOverview: `Análisis cuantitativo no disponible para ${match.homeTeam} vs ${match.awayTeam}: no existen cuotas ni métricas verificadas en esta etapa PRE-F00 (FAIL CLOSED). La publicación de pronósticos se habilitará con el Motor Cuantitativo certificado en F00.`,
       keyFactors: [
-        `Factor Localía: ${match.homeTeam} en su estadio registra ${(match.probabilities.home).toFixed(1)}% de probabilidad calibrada.`,
-        `Diferencial de Ocasiones: Promedio de remates a puerta (${match.statsComparison.homeShotsOnTarget} vs ${match.statsComparison.awayShotsOnTarget}).`,
-        `Volumen de Goles: Probabilidad de Over 2.5 estimada en ${overProb}%.`
+        `Estado del pipeline: SIN ANÁLISIS CUANTITATIVO VERIFICADO.`,
+        `Datos reales disponibles: programación confirmada (${match.homeTeam} vs ${match.awayTeam}, ${match.time}).`,
+        `Cuotas, probabilidades y edge: pendientes de provider certificado (F00).`
       ],
-      absencesImpact: match.absences && match.absences.length > 0
-        ? `Las bajas confirmadas influyen en el esquema defensivo, ampliando el margen de ventaja del pick principal.`
-        : 'Plantillas completas sin suspensiones graves de último minuto.',
+      absencesImpact: 'Información de bajas no verificada en esta etapa.',
       bestValuePick: {
-        market: match.evSignal?.market || (isHomeFav ? 'Hándicap Asiático / 1X2' : 'Línea de Goles'),
-        selection: match.evSignal?.selection || (isHomeFav ? match.homeTeam : 'Más de 2.0 Asiático'),
-        marketOdds: match.evSignal?.odds || (isHomeFav ? match.odds.home : match.odds.over25),
-        fairOdds: match.evSignal?.fairOdds || 1.65,
-        edgePercent: match.evSignal?.edge || 8.5,
-        modelProbability: match.evSignal?.modelProb || homeProb,
-        recommendedStake: match.evSignal?.stake || '+1.5u',
-        verdict: `El Algoritmo Cuantitativo Propietario FIJAS IA detecta un desajuste del ${match.evSignal?.edge || 8.5}% respecto a las casas de apuestas. Se sugiere stake de ${match.evSignal?.stake || '+1.5u'}.`
+        market: 'SIN PRONÓSTICO',
+        selection: 'FAIL CLOSED: no se emiten señales sin datos verificados',
+        marketOdds: 1,
+        fairOdds: 1,
+        edgePercent: 0,
+        modelProbability: 0,
+        recommendedStake: '+0.0u',
+        verdict: 'No se detecta ningún valor comprobable en esta etapa PRE-F00.'
       },
-      alternativePicks: [
-        {
-          market: 'Ambos Equipos Anotan',
-          selection: bttsProb > 50 ? 'BTTS Sí' : 'BTTS No',
-          odds: bttsProb > 50 ? match.odds.bttsYes : match.odds.bttsNo,
-          edgePercent: 5.4,
-          recommendedStake: '+1.0u'
-        }
-      ],
-      riskRating: 'Moderado',
-      confidenceScore: 89
+      riskRating: 'Alto',
+      confidenceScore: 0
     };
 
     return {
       analysis: fallbackReport,
-      source: 'Algoritmo Cuantitativo Propietario FIJAS IA'
+      source: 'Pipeline PRE-F00 (FAIL CLOSED — sin datos verificados)'
     };
   }
 }

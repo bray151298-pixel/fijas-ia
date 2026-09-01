@@ -15,6 +15,10 @@ import sys
 from datetime import datetime, timezone
 import httpx
 
+from backend.app.core.single_instance import (
+    acquire_poll_lock, release_poll_lock, telegram_compromised,
+)
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(levelname)s] %(message)s'
@@ -74,7 +78,7 @@ async def create_vip_invite_link():
                 return res['result']['invite_link']
     except Exception as e:
         logger.error(f'Error creando invite link: {e}')
-    return 'https://t.me/+FijasIA_VIP_Acceso'
+    return ''  # FAIL CLOSED: no se devuelve enlace estático/ficticio
 
 async def fetch_international_scores():
     """Consulta marcadores oficiales en vivo de todas las ligas internacionales."""
@@ -193,6 +197,21 @@ async def monitor_and_settle():
 async def support_bot_polling():
     """Atiende a los clientes en @SoporteFijasIA_bot con Yape/Plin y aprobación de Bray."""
     logger.info('Iniciando Bot de Soporte @SoporteFijasIA_bot...')
+    # FAIL CLOSED (PRE-F00): modo comprometido o duplicado → no tocar el bot.
+    if telegram_compromised():
+        logger.error('TELEGRAM_COMPROMISE_STATUS activo → FAIL CLOSED: soporte NO arranca.')
+        return
+    if not acquire_poll_lock('support'):
+        logger.error('Polling de soporte ya lo tiene otro proceso (single-instance) → SKIP.')
+        return
+    try:
+        await _support_bot_poll()
+    finally:
+        release_poll_lock('support')
+
+
+async def _support_bot_poll():
+    """Bucle de polling real (sólo lo ejecuta el dueño del lock single-instance)."""
     offset = None
     async with httpx.AsyncClient(timeout=30.0) as client:
         while True:
@@ -298,6 +317,9 @@ async def support_bot_polling():
 
 async def main():
     logger.info('🚀 INICIANDO ECOSISTEMA GLOBAL FIJAS IA 24/7...')
+    if telegram_compromised():
+        logger.error('TELEGRAM_COMPROMISE_STATUS activo → FAIL CLOSED: ecosistema NO inicia.')
+        return
     await asyncio.gather(
         monitor_and_settle(),
         support_bot_polling()

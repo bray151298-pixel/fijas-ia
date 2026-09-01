@@ -161,6 +161,9 @@ class ManualAnalysisResponse(BaseModel):
     assessments: list[MarketAssessment]
     value_picks: list[MarketAssessment]
     summary: str
+    # FAIL CLOSED (PRE-F00): pipeline cuantitativo DEPRECADO (modelo sobre datos
+    # sintéticos) → estas métricas nunca se presentan como verificadas/certificadas.
+    verification: str = "UNVERIFIED"
 
 
 # ---------- Helpers ----------
@@ -322,6 +325,7 @@ def analyze(req: ManualAnalysisRequest, session: Session = Depends(get_session))
         assessments=assessments,
         value_picks=value_picks,
         summary=summary,
+        verification="UNVERIFIED",
     )
 
 

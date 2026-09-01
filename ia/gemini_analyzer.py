@@ -83,15 +83,29 @@ Las probabilidades 1X2 deben sumar 100. Los porcentajes son numeros (no strings)
 
 
 def _configurar_gemini() -> genai.GenerativeModel:
-    """Inicializa el cliente con la clave de Streamlit secrets o fallback."""
+    """Inicializa el cliente con la clave proveniente SOLO de secrets/entorno.
+
+    No se usa ningun API key hardcodeada ni fallback literal. Si no hay
+    credencial configurada, la llamada falla (FAIL CLOSED).
+    """
+    import os
+
     api_key = ""
     try:
-        api_key = st.secrets.get("GEMINI_API_KEY", "") or st.secrets.get("GOOGLE_API_KEY", "")
+        api_key = (
+            st.secrets.get("GEMINI_API_KEY", "")
+            or st.secrets.get("GOOGLE_API_KEY", "")
+            or os.environ.get("GEMINI_API_KEY", "")
+            or os.environ.get("GOOGLE_API_KEY", "")
+        )
     except Exception:
         pass
 
     if not api_key:
-        api_key = "AIzaSyCSSSoFRgd6_eQA0_d6Um07Iz9nI4eHHdo"
+        raise RuntimeError(
+            "GEMINI_API_KEY/GOOGLE_API_KEY no configurada. "
+            "Definela en secrets o entorno. FAIL CLOSED: sin credencial no hay llamada."
+        )
 
     genai.configure(api_key=api_key)
     return genai.GenerativeModel(
@@ -189,10 +203,18 @@ INSTRUCCION:
 
 def _analizar_con_omniroute(prompt: str) -> dict[str, Any]:
     """Llama a OmniRoute / OpenAI compatible endpoint."""
+    import os
     import requests
-    base_url = st.secrets.get("OMNIROUTE_BASE_URL", "http://localhost:20128/v1").rstrip("/")
-    api_key = st.secrets.get("OMNIROUTE_API_KEY", "sk-omniroute")
-    model = st.secrets.get("OMNIROUTE_MODEL", "deepseek-chat")
+
+    base_url = st.secrets.get("OMNIROUTE_BASE_URL", os.environ.get("OMNIROUTE_BASE_URL", "")).rstrip("/")
+    api_key = st.secrets.get("OMNIROUTE_API_KEY", os.environ.get("OMNIROUTE_API_KEY", ""))
+    model = st.secrets.get("OMNIROUTE_MODEL", os.environ.get("OMNIROUTE_MODEL", "deepseek-chat"))
+
+    if not base_url or not api_key:
+        raise RuntimeError(
+            "OMNIROUTE_BASE_URL/OMNIROUTE_API_KEY no configurados. "
+            "FAIL CLOSED: sin credencial no hay llamada."
+        )
 
     url = f"{base_url}/chat/completions"
     headers = {
