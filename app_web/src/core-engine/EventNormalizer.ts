@@ -30,6 +30,7 @@ export interface SportEvent {
   period_detail: string;
   last_updated_utc: string;
   data_age_seconds: number;
+  raw_odds?: any;
 }
 
 export class EventNormalizer {
@@ -74,7 +75,8 @@ export class EventNormalizer {
       away_score: isNaN(awayScore as number) ? null : awayScore,
       period_detail: rawEvent.status?.type?.shortDetail || rawEvent.status?.type?.detail || '',
       last_updated_utc: nowUtc,
-      data_age_seconds: 0
+      data_age_seconds: 0,
+      raw_odds: comp.odds?.[0] || null
     };
   }
 

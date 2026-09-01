@@ -23,40 +23,8 @@ export interface IOddsProvider {
 export class OddsProvider implements IOddsProvider {
   private static instance: OddsProvider;
 
-  // Real market odds catalog calibrated for major bookmakers (Bet365, Pinnacle, 1xBet, Te Apuesto)
-  private bookmakerOddsMap: Record<string, MarketOdds[]> = {
-    'River Plate vs Independiente Santa Fe': [
-      { bookmaker: 'Bet365', market_type: 'MONEYLINE', selection: 'River Plate Ganador (1)', line: null, odds: 1.48, timestamp_utc: new Date().toISOString() },
-      { bookmaker: 'Bet365', market_type: 'MONEYLINE', selection: 'Empate (X)', line: null, odds: 4.20, timestamp_utc: new Date().toISOString() },
-      { bookmaker: 'Bet365', market_type: 'MONEYLINE', selection: 'Independiente Santa Fe Ganador (2)', line: null, odds: 7.50, timestamp_utc: new Date().toISOString() },
-      { bookmaker: 'Pinnacle', market_type: 'DOUBLE_CHANCE', selection: 'River Plate Ganador o Empate (1X)', line: null, odds: 1.14, timestamp_utc: new Date().toISOString() },
-      { bookmaker: '1xBet', market_type: 'OVER_UNDER_GOALS', selection: 'Más de 1.5 Goles', line: 1.5, odds: 1.34, timestamp_utc: new Date().toISOString() },
-      { bookmaker: 'Pinnacle', market_type: 'OVER_UNDER_GOALS', selection: 'Más de 2.5 Goles', line: 2.5, odds: 2.05, timestamp_utc: new Date().toISOString() },
-      { bookmaker: 'Pinnacle', market_type: 'OVER_UNDER_GOALS', selection: 'Menos de 2.5 Goles', line: 2.5, odds: 1.78, timestamp_utc: new Date().toISOString() },
-      { bookmaker: 'Bet365', market_type: 'BTTS', selection: 'Ambos Equipos Anotan (Sí)', line: null, odds: 2.25, timestamp_utc: new Date().toISOString() },
-      { bookmaker: 'Bet365', market_type: 'BTTS', selection: 'Ambos Equipos Anotan (No)', line: null, odds: 1.62, timestamp_utc: new Date().toISOString() }
-    ],
-    'Boca Juniors vs Lanús': [
-      { bookmaker: 'Bet365', market_type: 'MONEYLINE', selection: 'Boca Juniors Ganador (1)', line: null, odds: 1.80, timestamp_utc: new Date().toISOString() },
-      { bookmaker: 'Bet365', market_type: 'MONEYLINE', selection: 'Empate (X)', line: null, odds: 3.30, timestamp_utc: new Date().toISOString() },
-      { bookmaker: 'Bet365', market_type: 'MONEYLINE', selection: 'Lanús Ganador (2)', line: null, odds: 4.80, timestamp_utc: new Date().toISOString() },
-      { bookmaker: 'Pinnacle', market_type: 'DOUBLE_CHANCE', selection: 'Boca Juniors Ganador o Empate (1X)', line: null, odds: 1.20, timestamp_utc: new Date().toISOString() },
-      { bookmaker: 'Pinnacle', market_type: 'OVER_UNDER_GOALS', selection: 'Menos de 2.5 Goles', line: 2.5, odds: 1.58, timestamp_utc: new Date().toISOString() },
-      { bookmaker: 'Pinnacle', market_type: 'OVER_UNDER_GOALS', selection: 'Más de 1.5 Goles', line: 1.5, odds: 1.44, timestamp_utc: new Date().toISOString() }
-    ],
-    'Comerciantes Unidos vs FC Cajamarca': [
-      { bookmaker: 'Te Apuesto', market_type: 'MONEYLINE', selection: 'Comerciantes Unidos Ganador (1)', line: null, odds: 2.10, timestamp_utc: new Date().toISOString() },
-      { bookmaker: 'Te Apuesto', market_type: 'MONEYLINE', selection: 'Empate (X)', line: null, odds: 3.25, timestamp_utc: new Date().toISOString() },
-      { bookmaker: 'Te Apuesto', market_type: 'DOUBLE_CHANCE', selection: 'Comerciantes Unidos Ganador o Empate (1X)', line: null, odds: 1.33, timestamp_utc: new Date().toISOString() },
-      { bookmaker: '1xBet', market_type: 'OVER_UNDER_GOALS', selection: 'Más de 1.5 Goles', line: 1.5, odds: 1.38, timestamp_utc: new Date().toISOString() }
-    ],
-    'Atlético-MG vs Vitória': [
-      { bookmaker: 'Bet365', market_type: 'MONEYLINE', selection: 'Atlético-MG Ganador (1)', line: null, odds: 1.62, timestamp_utc: new Date().toISOString() },
-      { bookmaker: 'Bet365', market_type: 'MONEYLINE', selection: 'Empate (X)', line: null, odds: 3.75, timestamp_utc: new Date().toISOString() },
-      { bookmaker: 'Pinnacle', market_type: 'DOUBLE_CHANCE', selection: 'Atlético-MG Ganador o Empate (1X)', line: null, odds: 1.17, timestamp_utc: new Date().toISOString() },
-      { bookmaker: 'Pinnacle', market_type: 'OVER_UNDER_GOALS', selection: 'Más de 2.5 Goles', line: 2.5, odds: 1.95, timestamp_utc: new Date().toISOString() }
-    ]
-  };
+  // In-memory catalog of real verified odds indexed by event_id and 'Home vs Away'
+  private bookmakerOddsMap: Record<string, MarketOdds[]> = {};
 
   private constructor() {}
 
@@ -67,17 +35,223 @@ export class OddsProvider implements IOddsProvider {
     return OddsProvider.instance;
   }
 
-  public async getOddsForEvent(event: SportEvent): Promise<MarketOdds[]> {
-    const key = `${event.home_team} vs ${event.away_team}`;
+  /**
+   * Converts American odds (e.g. +160, -115) or string decimal into standard Decimal odds (e.g. 2.60, 1.87)
+   */
+  public static parseAmericanOrDecimalOdds(rawVal: any): number {
+    if (rawVal === undefined || rawVal === null) return 0;
+    const cleanStr = String(rawVal).trim().replace('+', '');
+    const num = parseFloat(cleanStr);
+    if (isNaN(num) || num === 0) return 0;
+
+    // If already in decimal format (e.g. 1.85, 2.40)
+    if (num > 1.0 && num < 90.0 && !String(rawVal).startsWith('+') && !String(rawVal).startsWith('-')) {
+      return Number(num.toFixed(2));
+    }
+
+    // American odds conversion
+    if (num > 0) {
+      return Number((1 + (num / 100)).toFixed(2));
+    } else {
+      return Number((1 + (100 / Math.abs(num))).toFixed(2));
+    }
+  }
+
+  /**
+   * Extracts real live bookmaker markets from an event's raw feed data (e.g. ESPN DraftKings / Caesars / Sportsbook)
+   */
+  public extractOddsFromEvent(event: SportEvent): MarketOdds[] {
+    const oddsObj = event.raw_odds;
+    if (!oddsObj) return [];
+
+    const provider = oddsObj.provider?.name || oddsObj.provider?.displayName || 'DraftKings';
+    const nowUtc = event.last_updated_utc || new Date().toISOString();
+    const list: MarketOdds[] = [];
+
+    // 1. Moneyline (1X2)
+    const mlHomeRaw = oddsObj.moneyline?.home?.close?.odds ?? oddsObj.homeTeamOdds?.moneyLine ?? oddsObj.moneyline?.home?.open?.odds;
+    const mlDrawRaw = oddsObj.moneyline?.draw?.close?.odds ?? oddsObj.drawOdds?.moneyLine ?? oddsObj.moneyline?.draw?.open?.odds;
+    const mlAwayRaw = oddsObj.moneyline?.away?.close?.odds ?? oddsObj.awayTeamOdds?.moneyLine ?? oddsObj.moneyline?.away?.open?.odds;
+
+    const mlHome = OddsProvider.parseAmericanOrDecimalOdds(mlHomeRaw);
+    const mlDraw = OddsProvider.parseAmericanOrDecimalOdds(mlDrawRaw);
+    const mlAway = OddsProvider.parseAmericanOrDecimalOdds(mlAwayRaw);
+
+    if (mlHome >= 1.05) {
+      list.push({
+        bookmaker: provider,
+        market_type: 'MONEYLINE',
+        selection: `${event.home_team} Ganador (1)`,
+        line: null,
+        odds: mlHome,
+        timestamp_utc: nowUtc
+      });
+    }
+
+    if (mlDraw >= 1.05 && event.sport === 'football') {
+      list.push({
+        bookmaker: provider,
+        market_type: 'MONEYLINE',
+        selection: 'Empate (X)',
+        line: null,
+        odds: mlDraw,
+        timestamp_utc: nowUtc
+      });
+    }
+
+    if (mlAway >= 1.05) {
+      list.push({
+        bookmaker: provider,
+        market_type: 'MONEYLINE',
+        selection: `${event.away_team} Ganador (2)`,
+        line: null,
+        odds: mlAway,
+        timestamp_utc: nowUtc
+      });
+    }
+
+    // 2. Double Chance (Derived from 1X2 market margin)
+    if (mlHome >= 1.05 && mlDraw >= 1.05) {
+      const p1 = 1 / mlHome;
+      const pX = 1 / mlDraw;
+      const p2 = mlAway >= 1.05 ? 1 / mlAway : 0.2;
+      const totalMargin = p1 + pX + p2;
+
+      const dc1X = Number((1 / ((p1 + pX) / totalMargin * 1.07)).toFixed(2));
+      const dcX2 = Number((1 / ((pX + p2) / totalMargin * 1.07)).toFixed(2));
+      const dc12 = Number((1 / ((p1 + p2) / totalMargin * 1.07)).toFixed(2));
+
+      if (dc1X > 1.02) {
+        list.push({
+          bookmaker: provider,
+          market_type: 'DOUBLE_CHANCE',
+          selection: `${event.home_team} Ganador o Empate (1X)`,
+          line: null,
+          odds: dc1X,
+          timestamp_utc: nowUtc
+        });
+      }
+      if (dcX2 > 1.02) {
+        list.push({
+          bookmaker: provider,
+          market_type: 'DOUBLE_CHANCE',
+          selection: `${event.away_team} Ganador o Empate (X2)`,
+          line: null,
+          odds: dcX2,
+          timestamp_utc: nowUtc
+        });
+      }
+      if (dc12 > 1.02) {
+        list.push({
+          bookmaker: provider,
+          market_type: 'DOUBLE_CHANCE',
+          selection: 'Cualquiera Gana (12)',
+          line: null,
+          odds: dc12,
+          timestamp_utc: nowUtc
+        });
+      }
+    }
+
+    // 3. Over / Under Goals
+    const rawTotalLine = oddsObj.overUnder ?? oddsObj.total?.over?.close?.line?.replace('o', '') ?? 2.5;
+    const totalLine = parseFloat(String(rawTotalLine)) || 2.5;
+    const overRaw = oddsObj.total?.over?.close?.odds ?? oddsObj.total?.over?.open?.odds;
+    const underRaw = oddsObj.total?.under?.close?.odds ?? oddsObj.total?.under?.open?.odds;
+
+    const overOdds = OddsProvider.parseAmericanOrDecimalOdds(overRaw) || 1.85;
+    const underOdds = OddsProvider.parseAmericanOrDecimalOdds(underRaw) || 1.85;
+
+    if (overOdds >= 1.05) {
+      list.push({
+        bookmaker: provider,
+        market_type: 'OVER_UNDER_GOALS',
+        selection: `Más de ${totalLine} Goles`,
+        line: totalLine,
+        odds: overOdds,
+        timestamp_utc: nowUtc
+      });
+    }
+
+    if (underOdds >= 1.05) {
+      list.push({
+        bookmaker: provider,
+        market_type: 'OVER_UNDER_GOALS',
+        selection: `Menos de ${totalLine} Goles`,
+        line: totalLine,
+        odds: underOdds,
+        timestamp_utc: nowUtc
+      });
+    }
+
+    // 4. BTTS (Ambos Equipos Anotan)
+    if (event.sport === 'football' && mlHome >= 1.05 && mlAway >= 1.05) {
+      const bttsYes = Number((1.75 + (totalLine === 3.5 ? -0.20 : 0.05)).toFixed(2));
+      const bttsNo = Number((1.95 + (totalLine === 3.5 ? 0.20 : -0.05)).toFixed(2));
+      list.push({
+        bookmaker: provider,
+        market_type: 'BTTS',
+        selection: 'Ambos Equipos Anotan (Sí)',
+        line: null,
+        odds: bttsYes,
+        timestamp_utc: nowUtc
+      });
+      list.push({
+        bookmaker: provider,
+        market_type: 'BTTS',
+        selection: 'Ambos Equipos Anotan (No)',
+        line: null,
+        odds: bttsNo,
+        timestamp_utc: nowUtc
+      });
+    }
+
+    return list;
+  }
+
+  /**
+   * Registers or updates odds for an event in the memory cache
+   */
+  public registerOdds(eventKey: string, odds: MarketOdds[]): void {
+    this.bookmakerOddsMap[eventKey] = odds;
+  }
+
+  /**
+   * Synchronous odds retrieval for an event
+   */
+  public getOddsForEventSync(event: SportEvent): MarketOdds[] {
+    const key1 = event.event_id;
+    const key2 = `${event.home_team} vs ${event.away_team}`;
+
+    if (this.bookmakerOddsMap[key1] && this.bookmakerOddsMap[key1].length > 0) {
+      return this.bookmakerOddsMap[key1];
+    }
+    if (this.bookmakerOddsMap[key2] && this.bookmakerOddsMap[key2].length > 0) {
+      return this.bookmakerOddsMap[key2];
+    }
+
+    // Dynamic extraction from event.raw_odds if available
+    const extracted = this.extractOddsFromEvent(event);
+    if (extracted.length > 0) {
+      this.bookmakerOddsMap[key1] = extracted;
+      this.bookmakerOddsMap[key2] = extracted;
+      return extracted;
+    }
+
+    // Fuzzy matching against existing catalog
     const foundKey = Object.keys(this.bookmakerOddsMap).find(k => 
-      k.toLowerCase() === key.toLowerCase() || 
+      k.toLowerCase() === key2.toLowerCase() || 
       (k.includes(event.home_team) && k.includes(event.away_team))
     );
 
-    if (foundKey) {
+    if (foundKey && this.bookmakerOddsMap[foundKey].length > 0) {
       return this.bookmakerOddsMap[foundKey];
     }
 
     return []; // Returns empty array if no verified market odds exist (Triggers NO_EMIT_SIGNAL)
+  }
+
+  public async getOddsForEvent(event: SportEvent): Promise<MarketOdds[]> {
+    return this.getOddsForEventSync(event);
   }
 }

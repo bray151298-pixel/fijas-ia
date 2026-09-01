@@ -91,8 +91,7 @@ export class AnalysisEngine {
 
     // 2. Map odds
     const oddsProvider = OddsProvider.getInstance();
-    // Synchronous access to calibrated real odds
-    const oddsList = (oddsProvider as any).bookmakerOddsMap?.[`${event.home_team} vs ${event.away_team}`] || [];
+    const oddsList = oddsProvider.getOddsForEventSync(event);
 
     const dqReport = DataQualityValidator.validate(event, oddsList);
     if (!dqReport.isValid) {

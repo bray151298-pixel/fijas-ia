@@ -13,19 +13,20 @@ import {
   HealthService,
   PostgresRepository,
   ParlayEngine,
-  TestSuite
+  TestSuite,
+  SportEvent
 } from './src/core-engine';
 
-import { VIP_PLANS_CATALOG, getPlanById, getAllActivePlans, PAYMENT_METHODS_CATALOG } from './src/support-engine/catalog/plansCatalog';
-import { classifyUserIntent, IntentType } from './src/support-engine/intents/intentClassifier';
-import { OBJECTIONS_RESPONSES } from './src/support-engine/conversation/objectionsEngine';
-import { ONBOARDING_GUIDE_TEXT } from './src/support-engine/conversation/faqEngine';
-import { evaluatePaymentFraud, calculateImageHash, registerValidatedPayment } from './src/support-engine/payments/fraudDetector';
-import { getOrCreateCustomer, updateCustomer, getAllCustomers } from './src/support-engine/crm/customerMemory';
-import { generateSingleUseVIPInvite } from './src/support-engine/vip/inviteManager';
-import { evaluateSubscriberRenewalAlerts } from './src/support-engine/vip/renewalScheduler';
-import { calculateCommercialAnalytics } from './src/support-engine/crm/salesAnalytics';
-import { saveStateToDisk, loadStateFromDisk } from './src/support-engine/storage/persistentStore';
+import { VIP_PLANS_CATALOG, getPlanById, getAllActivePlans, PAYMENT_METHODS_CATALOG } from './app_web/src/support-engine/catalog/plansCatalog';
+import { classifyUserIntent, IntentType } from './app_web/src/support-engine/intents/intentClassifier';
+import { OBJECTIONS_RESPONSES } from './app_web/src/support-engine/conversation/objectionsEngine';
+import { ONBOARDING_GUIDE_TEXT } from './app_web/src/support-engine/conversation/faqEngine';
+import { evaluatePaymentFraud, calculateImageHash, registerValidatedPayment } from './app_web/src/support-engine/payments/fraudDetector';
+import { getOrCreateCustomer, updateCustomer, getAllCustomers } from './app_web/src/support-engine/crm/customerMemory';
+import { generateSingleUseVIPInvite } from './app_web/src/support-engine/vip/inviteManager';
+import { evaluateSubscriberRenewalAlerts } from './app_web/src/support-engine/vip/renewalScheduler';
+import { calculateCommercialAnalytics } from './app_web/src/support-engine/crm/salesAnalytics';
+import { saveStateToDisk, loadStateFromDisk } from './app_web/src/support-engine/storage/persistentStore';
 
 import express from "express";
 import path from "path";
@@ -258,6 +259,25 @@ app.get("/api/health", (req, res) => {
       error: "OBSERVABILITY_ERROR: " + (e as Error).message,
       timestamp: new Date().toISOString()
     });
+  }
+});
+// Scheduler on-demand trigger endpoint
+app.all("/api/scheduler/tick", async (req, res) => {
+  try {
+    await runAutonomousSchedulerEngine();
+    const db = DatabaseRepository.getInstance();
+    const stats = db.getAuditStatistics();
+    res.json({
+      ok: true,
+      message: "Autonomous Scheduler tick executed successfully.",
+      signals_total: stats.production.totalSignals,
+      pending: stats.production.pendingCount,
+      settled: stats.production.settledCount,
+      signals: db.getAllSignals().slice(0, 10),
+      telemetry: schedulerTelemetry
+    });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
   }
 });
 
@@ -4337,6 +4357,7 @@ const SCHEDULER_STATE_FILE = path.join(process.cwd(), "scheduler_state.json");
 
 let lastBroadcastDay = "";
 let lastAuditDay = "";
+let lastBroadcastHadContent = false;
 const settledMatchesRegistry = new Set<string>();
 let isFirstSchedulerRun = true;
 
@@ -4357,6 +4378,9 @@ try {
     const savedState = JSON.parse(fs.readFileSync(SCHEDULER_STATE_FILE, "utf-8"));
     if (savedState.lastBroadcastDay) lastBroadcastDay = savedState.lastBroadcastDay;
     if (savedState.lastAuditDay) lastAuditDay = savedState.lastAuditDay;
+    if (typeof savedState.lastBroadcastHadContent === "boolean") {
+      lastBroadcastHadContent = savedState.lastBroadcastHadContent;
+    }
     if (Array.isArray(savedState.settledMatches)) {
       savedState.settledMatches.forEach((id: string) => settledMatchesRegistry.add(id));
     }
@@ -4371,12 +4395,72 @@ function saveSchedulerState() {
     const stateObj = {
       lastBroadcastDay,
       lastAuditDay,
+      lastBroadcastHadContent,
       settledMatches: Array.from(settledMatchesRegistry)
     };
     fs.writeFileSync(SCHEDULER_STATE_FILE, JSON.stringify(stateObj, null, 2), "utf-8");
   } catch (e) {
     console.warn("[Scheduler] Could not save state to disk", e);
   }
+}
+
+function formatAutonomousCoverageMessage(events: SportEvent[], todayStr: string, target: 'PUBLIC' | 'VIP') {
+  const nowLima = new Date().toLocaleTimeString('es-PE', {
+    timeZone: 'America/Lima',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
+  });
+
+  const candidates = events
+    .filter(ev => {
+      const eventDay = TimeService.getLimaDateIsoFormat(ev.start_time_utc);
+      return eventDay === todayStr && ev.status === 'SCHEDULED' && TimeService.isFuture(ev.start_time_utc, 0);
+    })
+    .sort((a, b) => new Date(a.start_time_utc).getTime() - new Date(b.start_time_utc).getTime())
+    .slice(0, target === 'VIP' ? 8 : 4);
+
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  const rows = candidates.map((ev, idx) => {
+    const isFootball = ev.sport === 'football';
+    const isBaseball = ev.sport === 'baseball';
+    const market = isFootball
+      ? 'Doble oportunidad / Total goles'
+      : isBaseball
+        ? 'Moneyline / Total carreras'
+        : 'Moneyline / Spread de puntos';
+    const focus = isFootball
+      ? `${ev.home_team} o Empate (1X) si la cuota acompaña`
+      : `${ev.home_team} Moneyline si mercado mantiene valor`;
+
+    return [
+      `<b>${idx + 1}. ${ev.home_team} vs ${ev.away_team}</b>`,
+      `<i>${ev.league}</i> · ${ev.start_time_local}`,
+      `Mercado a vigilar: <b>${market}</b>`,
+      `Lectura IA: <b>${focus}</b>`
+    ].join('\n');
+  }).join('\n\n');
+
+  const header = target === 'VIP'
+    ? 'CARTELERA VIP AUTOMATICA - FIJAS IA'
+    : 'PICK RADAR GRATUITO - FIJAS IA';
+
+  const footer = target === 'VIP'
+    ? 'Estado: monitoreo pre-match activo. Las entradas finales se confirman cuando el motor encuentre cuota y edge verificables.'
+    : `Para recibir las selecciones completas y seguimiento en vivo, escribe a ${SUPPORT_BOT_USERNAME}.`;
+
+  return [
+    `<b>${header}</b>`,
+    `<b>Fecha:</b> ${todayStr} · <b>Actualizado:</b> ${nowLima} Lima`,
+    '<i>Partidos reales detectados en ESPN. Este radar no sustituye una señal +EV auditada con cuota confirmada.</i>',
+    '',
+    rows,
+    '',
+    `<i>${footer}</i>`
+  ].join('\n');
 }
 
 async function fetchLiveESPNScores() {
@@ -4560,9 +4644,12 @@ async function runAutonomousSchedulerEngine() {
     }
 
     // 3. AUTOMATIC DAILY BROADCAST (AFTER MIDNIGHT: 00:30 AM ONWARDS)
-    if (lastBroadcastDay !== todayStr && currentHour >= 0) {
+    if (lastBroadcastDay !== todayStr) {
+      lastBroadcastHadContent = false;
+    }
+
+    if ((lastBroadcastDay !== todayStr || !lastBroadcastHadContent) && currentHour >= 0) {
       console.log(`[AutoPilot 24/7] Generating fresh immutable signals for ${todayStr}...`);
-      lastBroadcastDay = todayStr;
 
       const existingSignalEventIds = new Set(db.getAllSignals().map(s => s.event_id));
       const validSignalsToPublish: SignalEntity[] = [];
@@ -4620,10 +4707,36 @@ async function runAutonomousSchedulerEngine() {
         } catch (parlayErr) {
           console.error('[AutoPilot 24/7] Error generating parlay:', parlayErr);
         }
-      }
 
-      saveSchedulerState();
-      console.log(`[AutoPilot 24/7] Daily Telegram broadcast published with ${validSignalsToPublish.length} immutable signals.`);
+        lastBroadcastDay = todayStr;
+        lastBroadcastHadContent = true;
+        saveSchedulerState();
+        console.log(`[AutoPilot 24/7] Daily Telegram broadcast published with ${validSignalsToPublish.length} immutable signals.`);
+      } else {
+        const publicCoverageMsg = formatAutonomousCoverageMessage(realEvents, todayStr, 'PUBLIC');
+        const vipCoverageMsg = formatAutonomousCoverageMessage(realEvents, todayStr, 'VIP');
+
+        if (publicCoverageMsg || vipCoverageMsg) {
+          console.log(`[AutoPilot 24/7] No audited +EV signals available; sending real ESPN coverage radar for ${todayStr}.`);
+          if (publicCoverageMsg) {
+            await sendRawTelegramMessage(PUBLIC_CHANNEL, publicCoverageMsg, KEYBOARDS.channel_funnel, SIGNALS_BOT_TOKEN);
+          }
+          if (vipCoverageMsg) {
+            await sendRawTelegramMessage(VIP_CHANNEL_ID, vipCoverageMsg, undefined, SIGNALS_BOT_TOKEN);
+          }
+          schedulerTelemetry.last_telegram_dispatch_utc = TimeService.nowUtc();
+          schedulerTelemetry.last_telegram_error = null;
+          lastBroadcastDay = todayStr;
+          lastBroadcastHadContent = true;
+          saveSchedulerState();
+          console.log(`[AutoPilot 24/7] Coverage radar sent because no verified odds edge was available.`);
+        } else {
+          lastBroadcastDay = todayStr;
+          lastBroadcastHadContent = false;
+          saveSchedulerState();
+          console.log(`[AutoPilot 24/7] No signals or scheduled same-day events available yet; will retry next tick.`);
+        }
+      }
     }
 
     // 4. NIGHTLY AUDIT REPORT (23:00 PM)

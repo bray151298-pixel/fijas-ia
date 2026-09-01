@@ -23,6 +23,7 @@ export interface HealthReport {
   database: {
     status: 'connected' | 'error';
     storage_type: string;
+    postgres_status?: 'connected' | 'not_configured';
   };
   signals: {
     production_total: number;

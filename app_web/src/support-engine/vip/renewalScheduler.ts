@@ -1,7 +1,7 @@
 /**
  * FIJAS IA SUPPORT ENGINE — RENEWAL SCHEDULER & EXPIRATION ALERTS
  */
-import { StoredVIPSubscriber } from '../../types';
+import { VIPSubscriber as StoredVIPSubscriber } from '../../types';
 
 export interface RenewalAlertEvent {
   chatId: string;
