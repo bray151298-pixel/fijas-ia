@@ -40,6 +40,12 @@ dotenv.config();
 
 const app = express();
 
+// FIX(production-recovery): el JSON body-parser debe registrarse ANTES de cualquier
+// ruta POST que lea req.body (login admin, etc.). Antes vivía en la línea ~200, después
+// de /api/admin/login, dejando req.body=undefined → el login respondía HTTP 500.
+// body-parser marca req._body=true, por lo que un segundo app.use(express.json()) es no-op.
+app.use(express.json());
+
 // ==========================================
 // CORE ENGINE: AUDITABLE PERSISTENCE & HEALTH
 // ==========================================
@@ -195,9 +201,9 @@ app.get("/api/tests/run", async (req, res) => {
   res.json({ ok: allPassed, total: results.length, passed: results.filter(r => r.passed).length, results });
 });
 
-const PORT = 3000;
-
-app.use(express.json());
+// FIX(production-recovery): Render (y la mayoría de PaaS) inyectan el puerto por env.
+// Antes estaba hardcodeado a 3000 y solo funcionaba por el port-scan de Render → frágil.
+const PORT = Number(process.env.PORT) || 3000;
 
 // Initialize Gemini Client server-side
 const geminiApiKey = process.env.GEMINI_API_KEY;
@@ -4348,9 +4354,22 @@ async function runAutonomousSchedulerEngine() {
     for (const signal of pendingSignals) {
       // Look up the official result first in the fresh live feed, then fall back to the
       // persisted event store so prior-day matches are still settleable (FASE 8 #4-#6).
-      let matchEvent = realEvents.find(e => e.event_id === signal.event_id ||
-        (e.home_team && signal.home_team && e.home_team.toLowerCase() === signal.home_team.toLowerCase()));
+      //
+      // FIX(production-recovery): antes el fallback emparejaba por nombre de equipo contra
+      // TODO el feed en vivo. Una señal antigua (p. ej. Manchester United, 30-ago) emparejaba
+      // con un partido ACTUAL del mismo equipo que no está FINISHED → la señal quedaba PENDING
+      // para siempre (13 señales con ~2869 intentos y sin error). El emparejamiento por nombre
+      // ahora exige que la fecha (Lima) del evento coincida con la de la señal.
+      const signalDay = TimeService.getLimaDateIsoFormat(signal.event_start_utc);
+      let matchEvent = realEvents.find(e => e.event_id === signal.event_id);
+      if (!matchEvent) {
+        matchEvent = realEvents.find(e =>
+          e.home_team && signal.home_team &&
+          e.home_team.toLowerCase() === signal.home_team.toLowerCase() &&
+          TimeService.getLimaDateIsoFormat(e.start_time_utc) === signalDay);
+      }
 
+      // Fallback al almacén persistente por event_id exacto (resultado ya archivado).
       if (!matchEvent && signal.event_id) {
         matchEvent = db.getEvent(signal.event_id);
       }

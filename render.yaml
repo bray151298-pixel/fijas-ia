@@ -1,0 +1,59 @@
+# ==========================================================================
+# FIJAS IA — Render Blueprint (Infrastructure as Code)
+# ==========================================================================
+# El servicio en producción (https://fijas-ia.onrender.com) es la app NODE/EXPRESS
+# cuyo código canónico desplegable vive en el subdirectorio app_web/ (es el único
+# árbol autocontenido en git: incluye index.html, vite.config.ts y tsconfig.json,
+# que en la raíz del repo NO están versionados y por tanto NO compilan en Render).
+#
+# El Dockerfile de la raíz (python:3.11-slim + uvicorn) corresponde al backend
+# FastAPI y NO es el runtime de este servicio. Render usa runtime Node nativo.
+#
+# NOTA: si el servicio actual se creó manualmente en el dashboard, este blueprint
+# no lo reconfigura solo; sirve como fuente de verdad y para recrearlo por IaC.
+services:
+  - type: web
+    name: fijas-ia
+    runtime: node
+    plan: starter            # continuo (sin spin-down). Ajustar al plan real contratado.
+    region: oregon           # ajustar a la región real del servicio.
+    rootDir: app_web
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      # PORT lo inyecta Render automáticamente; el código ya lo lee (process.env.PORT).
+      - key: NODE_ENV
+        value: production
+      # --- Secretos / configuración: se cargan en el dashboard (sync:false = sin valor en git) ---
+      - key: DATABASE_URL
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN        # bot de SEÑALES (el código lee este nombre)
+        sync: false
+      - key: SUPPORT_BOT_TOKEN         # bot de SOPORTE
+        sync: false
+      - key: TELEGRAM_PUBLIC_CHANNEL
+        sync: false
+      - key: TELEGRAM_VIP_CHANNEL_ID
+        sync: false
+      - key: ADMIN_TELEGRAM_ID
+        sync: false
+      - key: ADMIN_USERNAME
+        sync: false
+      - key: ADMIN_PASSWORD            # OBLIGATORIO: sin él, /api/admin/* => 500 (FAIL CLOSED)
+        sync: false
+      - key: ADMIN_RECOVERY_KEY        # OBLIGATORIO para recuperación admin (FAIL CLOSED)
+        sync: false
+      - key: TELEGRAM_COMPROMISE_STATUS
+        value: OK
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: GEMINI_API_KEY            # opcional (solo contexto/redacción, nunca probs/EV)
+        sync: false
+      - key: OMNIROUTE_BASE_URL
+        sync: false
+      - key: OMNIROUTE_API_KEY
+        sync: false
+      - key: OMNIROUTE_MODEL
+        sync: false
