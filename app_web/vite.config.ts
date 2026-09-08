@@ -1,14 +1,18 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
-import path from 'path';
+import {fileURLToPath} from 'url';
 import {defineConfig} from 'vite';
+
+// FIX(production ESM runtime): __dirname no existe en ESM; derivar el dir del config
+// desde import.meta.url (patrón ESM canónico de Vite).
+const configDir = fileURLToPath(new URL('.', import.meta.url));
 
 export default defineConfig(() => {
   return {
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
-        '@': path.resolve(__dirname, '.'),
+        '@': configDir,
       },
     },
     server: {

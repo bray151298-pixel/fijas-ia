@@ -31,12 +31,23 @@ import { saveStateToDisk, loadStateFromDisk } from './app_web/src/support-engine
 import express from "express";
 import path from "path";
 import fs from "fs";
+import { fileURLToPath } from "url";
+import { webcrypto as nodeWebcrypto } from "crypto";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
 import { GoogleGenAI } from "@google/genai";
 import { fetchLiveESPNFutureMatches, formatToLimaTime, ESPN_LEAGUE_ENDPOINTS } from "./src/services/espnService";
 
 dotenv.config();
+
+// FIX(production ESM runtime): compatible con AMBOS modos de arranque:
+//  - Render dev/tsx (ESM): NO existe __dirname -> derivarlo de import.meta.url.
+//  - build/esbuild (npm start, CJS): __dirname SÍ existe; import.meta.url queda vacío
+//    en el bundle CJS, por eso se usa el guard typeof y NO se evalúa fileURLToPath ahí.
+const __dirnameESM: string =
+  typeof __dirname !== "undefined"
+    ? __dirname
+    : path.dirname(fileURLToPath(import.meta.url));
 
 const app = express();
 
@@ -123,7 +134,7 @@ app.post("/api/admin/login", (req, res) => {
 
   if (username && username.trim() === expectedUsername && password && password === expectedPassword) {
     const rand = new Uint8Array(32);
-    (globalThis.crypto || require("crypto")).getRandomValues(rand);
+    (globalThis.crypto || nodeWebcrypto).getRandomValues(rand);
     const sessionToken = "fijas_sec_" + Buffer.from(rand).toString("base64url") + "_" + Date.now();
     activeAdminSessions.add(sessionToken);
     return res.json({ success: true, token: sessionToken, message: "Acceso de administrador verificado y concedido." });
@@ -613,7 +624,7 @@ const VIP_CHANNEL_INVITE_LINK = process.env.VIP_CHANNEL_INVITE_LINK || "";
 // ─────────────────────────────────────────────────────────────────────────────
 // TELEGRAM SAFETY (PRE-F00): single-instance polling + estado de compromiso
 // ─────────────────────────────────────────────────────────────────────────────
-const TELEGRAM_LOCK_DIR = process.env.TELEGRAM_LOCK_DIR || path.join(__dirname, "data", "locks");
+const TELEGRAM_LOCK_DIR = process.env.TELEGRAM_LOCK_DIR || path.join(__dirnameESM, "data", "locks");
 const TELEGRAM_COMPROMISE_STATUS = (process.env.TELEGRAM_COMPROMISE_STATUS || "OK").trim().toUpperCase();
 const TELEGRAM_SAFE_STATUSES = new Set(["", "OK", "NONE", "FALSE", "0", "GOOD", "HEALTHY"]);
 const TELEGRAM_COMPROMISED = !TELEGRAM_SAFE_STATUSES.has(TELEGRAM_COMPROMISE_STATUS);
