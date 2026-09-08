@@ -363,22 +363,90 @@ curl -s https://fijas-ia.onrender.com/api/signals/pending        # settlement_at
 
 ---
 
+## RENDER ESM STARTUP FIX (2026-09-08)
+
+**Error original (Render deploy log del commit 157f46c):**
+```
+ReferenceError: __dirname is not defined in ES module scope
+  at app_web/server.ts  (const TELEGRAM_LOCK_DIR = ... path.join(__dirname, "data", "locks"))
+```
+Render arranca el servicio con `npm run dev` → `tsx server.ts` (**modo ESM**, `"type":"module"`). En ESM `__dirname`/`__filename` no existen → el módulo crasheaba al cargar (antes de escuchar), por eso el deploy nunca quedaba vivo y Render mantenía el commit viejo `e3a8f0c`.
+
+**Causa:** código con modismos CommonJS (`__dirname`, `require("crypto")`) ejecutándose bajo ESM (tsx).
+
+**Corrección (compatible con AMBOS modos — tsx/ESM dev y esbuild/CJS `npm start`):**
+- `app_web/server.ts` + `server.ts`:
+  - `import { fileURLToPath } from "url"` + `import { webcrypto as nodeWebcrypto } from "crypto"`.
+  - `const __dirnameESM = typeof __dirname !== "undefined" ? __dirname : path.dirname(fileURLToPath(import.meta.url))`.
+    - En CJS (bundle esbuild) `__dirname` existe → se usa; `import.meta.url` queda vacío pero NO se evalúa (guard `typeof`).
+    - En ESM (tsx) `typeof __dirname === "undefined"` → deriva de `import.meta.url`.
+  - `TELEGRAM_LOCK_DIR` usa `__dirnameESM` (verificado explícitamente).
+  - `require("crypto")` → `nodeWebcrypto` (ESM-safe; `globalThis.crypto` sigue siendo el primario).
+- `app_web/vite.config.ts`: `__dirname` (build-time) → `fileURLToPath(new URL('.', import.meta.url))`.
+
+**Inventario `__dirname`/`__filename` en runtime de Render:** solo `server.ts` (TELEGRAM_LOCK_DIR) y `vite.config.ts` (alias `@`). Ambos corregidos. Sin otros modismos CJS problemáticos salvo el `require("crypto")` (corregido).
+
+**Verificación LOCAL de arranque real (no solo build):**
+| Modo | Resultado |
+|------|-----------|
+| `npm run build` (vite+esbuild) | PASS (`dist/server.cjs` 294 kB) |
+| `node --import tsx server.ts` (= modo Render, ESM) | **ARRANCA**: `/health` 200, `/api/health` 200, `/api/admin/login` 401(mal)/200(ok). Sin `ReferenceError`. |
+| `node dist/server.cjs` (`npm start`, CJS) | **ARRANCA**: `/health` 200, `/api/health` 200, admin 401. Sin `ERR_INVALID_ARG_TYPE`. |
+| `npx tsx run_tests.ts` (core-engine) | 20/20 PASS |
+| secret-scan (archivos rastreados) | 0 hallazgos |
+
+**Commit:** `a31bcfc` — `fix(production): fix Render ESM runtime startup (__dirname/import.meta.url, webcrypto)`. **Push:** `54b0748..a31bcfc`, `origin/main = a31bcfc` (verificado por GitHub API).
+
+---
+
+## POST-DEPLOY VERIFICATION FINAL (2026-09-08)
+
+Tras el push de `a31bcfc`, Render **desplegó el commit nuevo** (auto-deploy). Runtime nuevo confirmado LIVE.
+
+| Ítem | Resultado | Evidencia |
+|------|-----------|-----------|
+| local HEAD | `a31bcfc` | `git rev-parse HEAD` |
+| origin/main (GitHub) | `a31bcfc` | GitHub API |
+| **Render runtime NUEVO** | **LIVE** ✅ | `started_at_utc=2026-09-08T04:15:39Z` (reinicio); huella post-remediación presente |
+| Huella `compromiseStatus` en `/api/telegram/bot-status` | **PRESENTE** ✅ | `telegramCompromised:false, compromiseStatus:"OK"` → código nuevo vivo |
+| Health `/health` + `/api/health` | 200 ✅ | `status:ok/healthy` |
+| Database | connected ✅ | `postgres_error:null`, PostgreSQL primary |
+| Scheduler | running ✅ | `running:true`, ticks avanzando (1→2→…), `last_tick` fresco |
+| **Fabricated HISTORICAL = 0** | ✅ | `/api/health signals.historical_total = 0` (antes 5); `all.winRate` ya no inflado |
+| **Admin login (código)** | **FIX OK** ✅ | ahora responde JSON `{"success":false,"message":"ADMIN_PASSWORD no configurada. FAIL CLOSED."}` (antes: crash HTML "Internal Server Error") → `express.json` correcto |
+| **Admin login (funcional)** | **500 — falta env** ❌ | `ADMIN_PASSWORD`/`MASTER_PASSWORD` NO están en Render → FAIL CLOSED. **EXTERNAL_ACTION_REQUIRED.** |
+| **Settlement bug** | **CORREGIDO** ✅ | `last_settlement_error` vacío (ya NO empareja partido actual erróneo); guard de fecha activo |
+| Señales legacy 30-ago (14) | siguen PENDING (no fabricar) | su resultado real NO está en el feed actual de ESPN; fail-closed. Requieren settlement manual o quedan UNRESOLVED |
+| Signals bot username | **vacío** ⚠ | `signalsBot:""` (getMe de arranque falló sin reintento; bot es solo-broadcast). Support OK (`@SoporteFijasIA_bot`). **Verificar `TELEGRAM_BOT_TOKEN` en Render** y que los broadcasts salgan. |
+| Single-instance polling / 409 | OK | `isPollingActive:true`, sin 409 observado |
+| Repo privacy | sigue PÚBLICO | `EXTERNAL_ACTION_REQUIRED` |
+
+### EXTERNAL_ACTION_REQUIRED (config Render — NO es código)
+1. **`ADMIN_PASSWORD`** (y `ADMIN_RECOVERY_KEY`, `ADMIN_USERNAME`) en Environment del servicio. El código confirma que hoy NO llegan al proceso (mensaje FAIL CLOSED). Sin esto el admin seguirá en 500. *(La confirmación previa de que estaban configuradas no coincide con la evidencia del runtime.)*
+2. **Verificar `TELEGRAM_BOT_TOKEN`** (bot de señales) en Render y que sea válido; el getMe de arranque no resolvió el username. Un redeploy reintenta el getMe. (Es solo-broadcast; confirmar que las publicaciones salen.)
+3. **Repo → Private** (política PROPRIETARY_PRIVATE) y rotar la key Gemini histórica.
+4. (Opcional recomendado) cambiar Start Command a `npm start` (artefacto compilado) — el fix funciona en ambos modos, pero el compilado es el runtime productivo idóneo.
+
+---
+
 ## DECLARACIONES FINALES
 
 ```
 VERDICT: PRODUCTION_RECOVERY_NO_GO
 ```
-(GitHub actualizado a `157f46c` y recuperación verificada localmente, pero **producción sigue en `e3a8f0c`**: el deploy de Render no se completó y requiere acción en el dashboard. Declarar GO ahora fabricaría una verificación de deploy inexistente. GO = runtime nuevo vivo + verificaciones críticas post-deploy en verde.)
+(El **fix del deploy fallido de Render está RESUELTO**: el commit `a31bcfc` con las correcciones ESM está REALMENTE VIVO en producción, el scheduler corre, la DB conecta y las señales fabricadas ya son 0. Se mantiene **NO_GO** porque una función crítica —login admin— sigue en 500 por **falta de `ADMIN_PASSWORD` en Render** (config externa, no código) y el username del signals bot no resolvió. GO = configurar `ADMIN_PASSWORD` + confirmar token de señales; ambos son acciones en el dashboard de Render, sin más cambios de código.)
 
 ```
-GITHUB_PUSH_DONE=true                 # origin/main = 157f46c (verificado por GitHub API)
-AUTOMATION_RECOVERED=false            # fixes en GitHub pero no vivos en Render
-RENDER_DEPLOYMENT_VERIFIED=false      # producción sigue en e3a8f0c tras el push
-TELEGRAM_VERIFIED=false
-SCHEDULER_VERIFIED=true               # corriendo (runtime viejo)
-DATABASE_VERIFIED=true
-HOSTING_24_7_CERTIFIED=false
-REMOTE_RENDER_VERIFICATION_REQUIRED=true   # completar/auditar deploy en dashboard Render
+GITHUB_PUSH_DONE=true                 # origin/main = a31bcfc (verificado por GitHub API)
+RENDER_ESM_STARTUP_FIXED=true         # __dirname/import.meta.url + webcrypto; arranca en tsx/ESM y CJS
+RENDER_DEPLOYMENT_VERIFIED=true       # commit a31bcfc REALMENTE vivo (compromiseStatus + historical=0 + started_at reset)
+AUTOMATION_RECOVERED=true             # scheduler corre el código corregido; settlement fix activo; 0 datos fabricados
+SCHEDULER_VERIFIED=true               # running, ticks avanzando, last_tick fresco
+DATABASE_VERIFIED=true                # PostgreSQL connected (primary)
+TELEGRAM_VERIFIED=false               # support OK; signals username no resolvió (verificar TELEGRAM_BOT_TOKEN); sin test de pick
+ADMIN_LOGIN_CODE_FIXED=true           # responde JSON FAIL-CLOSED (no crash); express.json corregido
+ADMIN_LOGIN_FUNCTIONAL=false          # 500 por ADMIN_PASSWORD ausente en Render (config externa)
+HOSTING_24_7_CERTIFIED=false          # plan no confirmable sin dashboard; filesystem efímero
 HOSTING_24_7_BLOCKER=false
 TELEGRAM_SECURITY_STATUS=CONFIGURATION_ERROR
 MANUAL_SECRET_ROTATION_REQUIRED=true
